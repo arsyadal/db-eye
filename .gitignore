@@ -1,1 +1,6 @@
 /target
+*.sqlite
+*.db
+*.csv
+CLAUDE.md
+.env
