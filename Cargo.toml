@@ -2,6 +2,13 @@
 name = "db-eye"
 version = "0.1.0"
 edition = "2024"
+description = "Terminal UI database browser for SQLite, PostgreSQL, and MySQL"
+license = "MIT"
+repository = "https://github.com/arsyadal/db-eye"
+homepage = "https://github.com/arsyadal/db-eye"
+keywords = ["database", "tui", "sqlite", "postgresql", "mysql"]
+categories = ["command-line-utilities", "database"]
+readme = "README.md"
 
 [dependencies]
 crossterm = "0.29.0"
