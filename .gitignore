@@ -4,3 +4,4 @@
 *.csv
 CLAUDE.md
 .env
+.rtk/
