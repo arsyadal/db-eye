@@ -14,6 +14,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
 - Template feature spec dan release checklist.
 - Unit tests untuk CRUD statement builder.
 - SQLite test untuk parameterized write values.
+- Read-only mode via `--read-only` / `-r` untuk memblokir write actions dan destructive custom SQL.
 
 ### Changed
 

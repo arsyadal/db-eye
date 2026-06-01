@@ -20,6 +20,9 @@ cargo run -- ./path/to/file.db
 # Open SQLite file directly
 db-eye ./mydb.sqlite
 
+# Open in read-only mode (disables writes/CRUD)
+db-eye --read-only ./mydb.sqlite
+
 # Launch without args → connect screen
 db-eye
 ```
@@ -54,9 +57,9 @@ db-eye
 | `h` / `l` | Scroll columns |
 | `/` | Search / filter rows (real-time) |
 | `:` | Enter SQL query |
-| `i` | Insert row |
-| `u` | Update selected row (requires primary key) |
-| `d` | Delete selected row (requires primary key + confirmation) |
+| `i` | Insert row (disabled in read-only mode) |
+| `u` | Update selected row, requires primary key (disabled in read-only mode) |
+| `d` | Delete selected row, requires primary key + confirmation (disabled in read-only mode) |
 | `e` | Export visible data to CSV |
 | `Tab` | Switch focus to tables panel |
 | `q` / `Esc` | Back to tables panel |
@@ -74,6 +77,14 @@ db-eye
 |-----|--------|
 | `Ctrl+C` | Quit |
 
+## Safety
+
+Use `--read-only` / `-r` to disable write operations. In read-only mode:
+
+- Insert/update/delete shortcuts are blocked.
+- Insert/update/delete confirmation screens cannot execute.
+- Custom SQL is limited to read-style statements such as `SELECT`, `WITH`, `EXPLAIN`, `SHOW`, and `DESCRIBE`.
+
 ## Connection Strings
 
 | DB | Format |
@@ -88,6 +99,7 @@ db-eye
 - Real-time search across all columns
 - Custom SQL queries with results displayed inline
 - Insert, update, and delete rows from the data panel
+- Read-only mode for safer browsing
 - Foreign-key value hints in insert/update forms
 - Export query results to CSV
 - Multiple simultaneous DB connections (tabs)

@@ -446,12 +446,18 @@ pub struct App {
     pub search_input: String,
     pub status: String,
     pub page_size: usize,
+    pub read_only: bool,
     pub crud_form: Option<CrudForm>,
     pub delete_confirm: Option<DeleteConfirm>,
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(read_only: bool) -> Self {
+        let status = if read_only {
+            "READ-ONLY  |  ←/→: switch DB type  Enter: connect  Ctrl+C: quit"
+        } else {
+            "←/→: switch DB type  Enter: connect  Ctrl+C: quit"
+        };
         Self {
             screen: Screen::Connect,
             focus: Focus::Tables,
@@ -463,8 +469,9 @@ impl App {
             server_conn: None,
             query_input: String::new(),
             search_input: String::new(),
-            status: "←/→: switch DB type  Enter: connect  Ctrl+C: quit".into(),
+            status: status.into(),
             page_size: 100,
+            read_only,
             crud_form: None,
             delete_confirm: None,
         }
@@ -476,6 +483,48 @@ impl App {
 
     pub fn current_tab_mut(&mut self) -> Option<&mut Tab> {
         self.tabs.get_mut(self.active_tab)
+    }
+
+    fn connect_help(&self) -> &'static str {
+        if self.read_only {
+            "READ-ONLY  |  ←/→: switch DB type  Enter: connect"
+        } else {
+            "←/→: switch DB type  Enter: connect"
+        }
+    }
+
+    fn data_help(&self) -> &'static str {
+        if self.read_only {
+            "READ-ONLY  |  j/k:nav  e:export  /:search  :::query  Esc:back"
+        } else {
+            "j/k:nav  i:insert  u:update  d:delete  e:export  /:search  :::query  Esc:back"
+        }
+    }
+
+    fn table_help(&self) -> &'static str {
+        if self.read_only {
+            "READ-ONLY  |  Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close  Esc:back"
+        } else {
+            "Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close  Esc:back"
+        }
+    }
+
+    fn read_only_block(&mut self) {
+        self.status = "READ-ONLY mode: write actions are disabled".into();
+    }
+
+    fn is_read_only_sql(sql: &str) -> bool {
+        let sql = sql.trim_start();
+        if sql.is_empty() {
+            return true;
+        }
+        let sql = sql
+            .trim_start_matches(|c: char| c == '(' || c == ';' || c.is_whitespace())
+            .to_lowercase();
+        matches!(
+            sql.split_whitespace().next(),
+            Some("select" | "with" | "show" | "describe" | "desc" | "explain")
+        )
     }
 
     pub async fn run<B: Backend>(
@@ -539,10 +588,7 @@ impl App {
                 self.screen = Screen::Main;
                 self.focus = Focus::Tables;
                 self.sqlite_input.clear();
-                self.status = format!(
-                    "Connected: {}  |  Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close",
-                    path
-                );
+                self.status = format!("Connected: {}  |  {}", path, self.table_help());
             }
             Err(e) => {
                 self.status = format!("Error: {}", e);
@@ -610,10 +656,7 @@ impl App {
                 self.screen = Screen::Main;
                 self.focus = Focus::Tables;
                 self.server_conn = None;
-                self.status = format!(
-                    "Connected: {}  |  Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close  Esc:back-to-db-list",
-                    display
-                );
+                self.status = format!("Connected: {}  |  {}", display, self.table_help());
             }
             Err(e) => {
                 self.status = format!("Error: {}", e);
@@ -626,12 +669,12 @@ impl App {
             KeyCode::Left => {
                 self.db_type = self.db_type.prev();
                 self.connect_form = ConnectForm::new(&self.db_type);
-                self.status = "←/→: switch DB type  Enter: connect".into();
+                self.status = self.connect_help().into();
             }
             KeyCode::Right => {
                 self.db_type = self.db_type.next();
                 self.connect_form = ConnectForm::new(&self.db_type);
-                self.status = "←/→: switch DB type  Enter: connect".into();
+                self.status = self.connect_help().into();
             }
             KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => {
                 if self.db_type != DbTypeChoice::Sqlite {
@@ -699,7 +742,7 @@ impl App {
             KeyCode::Esc => {
                 self.server_conn = None;
                 self.screen = Screen::Connect;
-                self.status = "←/→: switch DB type  Enter: connect".into();
+                self.status = self.connect_help().into();
             }
             _ => {}
         }
@@ -750,11 +793,11 @@ impl App {
             KeyCode::Tab => {
                 self.focus = match self.focus {
                     Focus::Tables => {
-                        self.status = "j/k:nav  i:insert  u:update  d:delete  e:export  /:search  :::query  Esc:back".into();
+                        self.status = self.data_help().into();
                         Focus::Data
                     }
                     Focus::Data => {
-                        self.status = "Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close  Esc:back".into();
+                        self.status = self.table_help().into();
                         Focus::Tables
                     }
                 };
@@ -785,9 +828,7 @@ impl App {
             KeyCode::Enter => {
                 self.load_table_data().await;
                 self.focus = Focus::Data;
-                self.status =
-                    "j/k:nav  i:insert  u:update  d:delete  e:export  /:search  :::query  Esc:back"
-                        .into();
+                self.status = self.data_help().into();
             }
             KeyCode::Esc => {
                 self.go_back().await;
@@ -826,7 +867,7 @@ impl App {
             }
         } else {
             self.screen = Screen::Connect;
-            self.status = "←/→: switch DB type  Enter: connect".into();
+            self.status = self.connect_help().into();
         }
     }
 
@@ -906,13 +947,25 @@ impl App {
                 }
             }
             KeyCode::Char('i') => {
-                self.open_insert_form().await;
+                if self.read_only {
+                    self.read_only_block();
+                } else {
+                    self.open_insert_form().await;
+                }
             }
             KeyCode::Char('u') => {
-                self.open_update_form().await;
+                if self.read_only {
+                    self.read_only_block();
+                } else {
+                    self.open_update_form().await;
+                }
             }
             KeyCode::Char('d') => {
-                self.open_delete_confirm().await;
+                if self.read_only {
+                    self.read_only_block();
+                } else {
+                    self.open_delete_confirm().await;
+                }
             }
             KeyCode::Esc | KeyCode::Char('q') => {
                 if let Some(t) = self.current_tab_mut() {
@@ -924,8 +977,7 @@ impl App {
                     t.search_query.clear();
                 }
                 self.focus = Focus::Tables;
-                self.status =
-                    "Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close  Esc:back".into();
+                self.status = self.table_help().into();
             }
             _ => {}
         }
@@ -939,6 +991,11 @@ impl App {
             }
             KeyCode::Enter => {
                 let sql = self.query_input.trim().to_string();
+                if self.read_only && !Self::is_read_only_sql(&sql) {
+                    self.screen = Screen::Main;
+                    self.read_only_block();
+                    return;
+                }
                 if let Some(tab) = self.tabs.get_mut(self.active_tab) {
                     match tab.db.execute_query(&sql).await {
                         Ok(result) => {
@@ -992,6 +1049,10 @@ impl App {
     }
 
     async fn open_insert_form(&mut self) {
+        if self.read_only {
+            self.read_only_block();
+            return;
+        }
         let table = match self.current_tab().and_then(|t| t.tables.get(t.table_index)) {
             Some(t) => t.clone(),
             None => return,
@@ -1040,6 +1101,10 @@ impl App {
     }
 
     async fn open_update_form(&mut self) {
+        if self.read_only {
+            self.read_only_block();
+            return;
+        }
         let (table, row_data) = {
             let tab = match self.current_tab() {
                 Some(t) => t,
@@ -1130,6 +1195,10 @@ impl App {
     }
 
     async fn open_delete_confirm(&mut self) {
+        if self.read_only {
+            self.read_only_block();
+            return;
+        }
         let (table, row_data, columns) = {
             let tab = match self.current_tab() {
                 Some(t) => t,
@@ -1204,6 +1273,12 @@ impl App {
     }
 
     async fn handle_crud_form(&mut self, key: KeyCode) {
+        if self.read_only {
+            self.crud_form = None;
+            self.screen = Screen::Main;
+            self.read_only_block();
+            return;
+        }
         match key {
             KeyCode::Tab | KeyCode::Down => {
                 if let Some(ref mut form) = self.crud_form {
@@ -1266,6 +1341,12 @@ impl App {
     }
 
     async fn handle_confirm_delete(&mut self, key: KeyCode) {
+        if self.read_only {
+            self.delete_confirm = None;
+            self.screen = Screen::Main;
+            self.read_only_block();
+            return;
+        }
         match key {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
                 let statement = self
@@ -1333,9 +1414,14 @@ impl App {
                     tab.result = Some(result);
                     tab.search_query.clear();
                     tab.update_filter();
+                    let actions = if self.read_only {
+                        "READ-ONLY  /:search  e:csv  ::sql  q:back"
+                    } else {
+                        "i:insert  u:update  d:delete  /:search  e:csv  ::sql  q:back"
+                    };
                     self.status = format!(
-                        "{}  |  {} rows  |  Tab:focus  j/k:scroll  h/l:cols  i:insert  u:update  d:delete  /:search  e:csv  ::sql  q:back",
-                        table, tab.total_rows
+                        "{}  |  {} rows  |  Tab:focus  j/k:scroll  h/l:cols  {}",
+                        table, tab.total_rows, actions
                     );
                 }
                 Err(e) => self.status = format!("Error: {}", e),
@@ -1408,5 +1494,23 @@ mod tests {
             stmt.sql,
             "UPDATE \"users\" SET \"name\" = $1, \"email\" = $2 WHERE \"id\" = $3"
         );
+    }
+
+    #[test]
+    fn read_only_sql_allows_selects_and_explain() {
+        assert!(App::is_read_only_sql("select * from users"));
+        assert!(App::is_read_only_sql(
+            "WITH recent AS (SELECT 1) SELECT * FROM recent"
+        ));
+        assert!(App::is_read_only_sql("EXPLAIN SELECT * FROM users"));
+        assert!(App::is_read_only_sql("SHOW TABLES"));
+    }
+
+    #[test]
+    fn read_only_sql_blocks_writes() {
+        assert!(!App::is_read_only_sql("insert into users values (1)"));
+        assert!(!App::is_read_only_sql("UPDATE users SET name = 'Ada'"));
+        assert!(!App::is_read_only_sql("delete from users"));
+        assert!(!App::is_read_only_sql("drop table users"));
     }
 }
