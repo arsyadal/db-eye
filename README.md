@@ -94,3 +94,11 @@ db-eye
 - PostgreSQL: connect to server → pick database from list
 - Auto column width fitting
 - Monochrome TUI — works in any terminal
+
+## Development Docs
+
+- `PRD.md` — production roadmap and v1.0 acceptance criteria
+- `CHANGELOG.md` — release notes and known limitations
+- `docs/DEVELOPMENT.md` — development workflow and definition of done
+- `docs/DEVLOG.md` — chronological development notes
+- `docs/templates/` — feature spec and release checklist templates
