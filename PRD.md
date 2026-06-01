@@ -214,7 +214,7 @@ DB-Eye bisa dianggap production-ready jika:
 - Parameterized CRUD. ✅ initial implementation
 - SQLite integration tests.
 - Read-only mode. ✅ initial implementation
-- Better error messages.
+- Better error messages. ✅ initial implementation
 
 ### v0.4
 

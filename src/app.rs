@@ -1,4 +1,4 @@
-use crate::db::{ColumnInfo, DbClient, QueryResult};
+use crate::db::{ColumnInfo, DbClient, QueryResult, format_db_error};
 use crate::ui;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};
@@ -579,7 +579,7 @@ impl App {
                 match tab.db.list_tables().await {
                     Ok(tables) => tab.tables = tables,
                     Err(e) => {
-                        self.status = format!("Error: {}", e);
+                        self.status = format_db_error("Loading tables", &e);
                         return;
                     }
                 }
@@ -591,7 +591,7 @@ impl App {
                 self.status = format!("Connected: {}  |  {}", path, self.table_help());
             }
             Err(e) => {
-                self.status = format!("Error: {}", e);
+                self.status = format_db_error("Connection", &e);
             }
         }
     }
@@ -615,11 +615,11 @@ impl App {
                     self.status = "j/k: navigate  Enter: open database  Esc: back".into();
                 }
                 Err(e) => {
-                    self.status = format!("Error listing databases: {}", e);
+                    self.status = format_db_error("Listing databases", &e);
                 }
             },
             Err(e) => {
-                self.status = format!("Connection failed: {}", e);
+                self.status = format_db_error("Connection", &e);
             }
         }
     }
@@ -646,7 +646,7 @@ impl App {
                 match tab.db.list_tables().await {
                     Ok(tables) => tab.tables = tables,
                     Err(e) => {
-                        self.status = format!("Error loading tables: {}", e);
+                        self.status = format_db_error("Loading tables", &e);
                         return;
                     }
                 }
@@ -659,7 +659,7 @@ impl App {
                 self.status = format!("Connected: {}  |  {}", display, self.table_help());
             }
             Err(e) => {
-                self.status = format!("Error: {}", e);
+                self.status = format_db_error("Opening database", &e);
             }
         }
     }
@@ -856,12 +856,12 @@ impl App {
                         self.status = "j/k: navigate  Enter: open database  Esc: back".into();
                     }
                     Err(e) => {
-                        self.status = format!("Error: {}", e);
+                        self.status = format_db_error("Listing databases", &e);
                         self.screen = Screen::Connect;
                     }
                 },
                 Err(e) => {
-                    self.status = format!("Reconnect failed: {}", e);
+                    self.status = format_db_error("Reconnect", &e);
                     self.screen = Screen::Connect;
                 }
             }
@@ -1010,7 +1010,7 @@ impl App {
                             self.status = format!("{} rows returned", count);
                         }
                         Err(e) => {
-                            self.status = format!("Query error: {}", e);
+                            self.status = format_db_error("Query", &e);
                         }
                     }
                 }
@@ -1095,7 +1095,7 @@ impl App {
                     self.screen = Screen::CrudForm;
                     self.status = "Tab/↑↓: fields  Enter: save  Esc: cancel".into();
                 }
-                Err(e) => self.status = format!("Error: {}", e),
+                Err(e) => self.status = format_db_error("Loading columns", &e),
             }
         }
     }
@@ -1189,7 +1189,7 @@ impl App {
                     self.screen = Screen::CrudForm;
                     self.status = "Tab/↑↓: fields  Enter: save  Esc: cancel".into();
                 }
-                Err(e) => self.status = format!("Error: {}", e),
+                Err(e) => self.status = format_db_error("Loading columns", &e),
             }
         }
     }
@@ -1267,7 +1267,7 @@ impl App {
                     });
                     self.screen = Screen::ConfirmDelete;
                 }
-                Err(e) => self.status = format!("Error: {}", e),
+                Err(e) => self.status = format_db_error("Loading columns", &e),
             }
         }
     }
@@ -1325,7 +1325,11 @@ impl App {
                                 self.status = msg;
                             }
                             Err(e) => {
-                                self.status = format!("Error: {}", e);
+                                let action = match self.crud_form.as_ref().map(|f| f.mode.clone()) {
+                                    Some(CrudMode::Insert) => "Insert",
+                                    _ => "Update",
+                                };
+                                self.status = format_db_error(action, &e);
                             }
                         }
                     }
@@ -1364,14 +1368,7 @@ impl App {
                                 self.status = msg;
                             }
                             Err(e) => {
-                                let msg = e.to_string();
-                                self.status = if msg.contains("FOREIGN KEY")
-                                    || msg.contains("foreign key")
-                                {
-                                    "Cannot delete: row is referenced by another table (foreign key constraint)".into()
-                                } else {
-                                    format!("Error: {}", msg)
-                                };
+                                self.status = format_db_error("Delete", &e);
                                 self.delete_confirm = None;
                                 self.screen = Screen::Main;
                             }
@@ -1424,7 +1421,7 @@ impl App {
                         table, tab.total_rows, actions
                     );
                 }
-                Err(e) => self.status = format!("Error: {}", e),
+                Err(e) => self.status = format_db_error("Loading table data", &e),
             }
         }
     }

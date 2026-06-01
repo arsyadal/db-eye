@@ -1,4 +1,4 @@
-use sqlx::{AnyPool, Column, Row, any::AnyRow};
+use sqlx::{AnyPool, Column, Row, any::AnyRow, error::ErrorKind};
 
 #[derive(Clone, PartialEq)]
 pub enum DbType {
@@ -22,6 +22,89 @@ impl DbType {
 pub struct DbClient {
     pub pool: AnyPool,
     pub db_type: DbType,
+}
+
+pub fn format_db_error(action: &str, error: &sqlx::Error) -> String {
+    let prefix = if action.is_empty() {
+        "Database error".to_string()
+    } else {
+        format!("{} failed", action)
+    };
+
+    match error {
+        sqlx::Error::Database(db_error) => {
+            let constraint = db_error
+                .constraint()
+                .map(|c| format!(" ({c})"))
+                .unwrap_or_default();
+            match db_error.kind() {
+                ErrorKind::UniqueViolation => {
+                    format!("{prefix}: duplicate value violates a unique constraint{constraint}")
+                }
+                ErrorKind::ForeignKeyViolation => format!(
+                    "{prefix}: foreign key constraint failed{constraint}; check referenced rows first"
+                ),
+                ErrorKind::NotNullViolation => {
+                    format!("{prefix}: required field cannot be NULL{constraint}")
+                }
+                ErrorKind::CheckViolation => {
+                    format!("{prefix}: value violates a check constraint{constraint}")
+                }
+                ErrorKind::Other => classify_db_message(&prefix, db_error.message()),
+                _ => classify_db_message(&prefix, db_error.message()),
+            }
+        }
+        sqlx::Error::Io(_) => format!("{prefix}: database connection error ({error})"),
+        sqlx::Error::PoolTimedOut => format!("{prefix}: database connection timed out"),
+        sqlx::Error::PoolClosed => format!("{prefix}: database connection is closed"),
+        sqlx::Error::RowNotFound => format!("{prefix}: no matching row found"),
+        sqlx::Error::ColumnNotFound(column) => format!("{prefix}: column not found: {column}"),
+        sqlx::Error::ColumnIndexOutOfBounds { index, len } => {
+            format!("{prefix}: column index {index} out of bounds (columns: {len})")
+        }
+        sqlx::Error::Configuration(_) => {
+            format!("{prefix}: invalid database configuration ({error})")
+        }
+        sqlx::Error::Tls(_) => format!("{prefix}: TLS connection failed ({error})"),
+        _ => classify_db_message(&prefix, &error.to_string()),
+    }
+}
+
+fn classify_db_message(prefix: &str, message: &str) -> String {
+    let lower = message.to_lowercase();
+    let friendly = if lower.contains("foreign key") {
+        Some("foreign key constraint failed; check referenced rows first")
+    } else if lower.contains("unique") || lower.contains("duplicate") || lower.contains("1062") {
+        Some("duplicate value violates a unique constraint")
+    } else if lower.contains("not null") || lower.contains("cannot be null") {
+        Some("required field cannot be NULL")
+    } else if lower.contains("permission denied")
+        || lower.contains("access denied")
+        || lower.contains("readonly")
+        || lower.contains("read-only")
+        || lower.contains("attempt to write a readonly database")
+    {
+        Some("permission denied or database is read-only")
+    } else if lower.contains("syntax error") || lower.contains("sql syntax") {
+        Some("SQL syntax error; check the query text")
+    } else if lower.contains("no such table")
+        || lower.contains("doesn't exist")
+        || lower.contains("does not exist")
+        || lower.contains("unknown table")
+    {
+        Some("table or database object not found")
+    } else if lower.contains("no such column") || lower.contains("unknown column") {
+        Some("column not found")
+    } else if lower.contains("connection refused") || lower.contains("could not connect") {
+        Some("could not connect to database server")
+    } else {
+        None
+    };
+
+    match friendly {
+        Some(summary) => format!("{prefix}: {summary} ({message})"),
+        None => format!("{prefix}: {message}"),
+    }
 }
 
 impl DbClient {
@@ -492,5 +575,27 @@ mod tests {
         );
         db.pool.close().await;
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn classify_db_message_maps_common_constraint_errors() {
+        let fk = classify_db_message("Delete failed", "FOREIGN KEY constraint failed");
+        assert!(fk.contains("foreign key constraint failed"));
+
+        let unique = classify_db_message("Insert failed", "UNIQUE constraint failed: users.email");
+        assert!(unique.contains("duplicate value"));
+
+        let not_null =
+            classify_db_message("Insert failed", "NOT NULL constraint failed: users.name");
+        assert!(not_null.contains("required field"));
+    }
+
+    #[test]
+    fn classify_db_message_maps_permission_and_syntax_errors() {
+        let readonly = classify_db_message("Update failed", "attempt to write a readonly database");
+        assert!(readonly.contains("read-only"));
+
+        let syntax = classify_db_message("Query failed", "near \"FROM\": syntax error");
+        assert!(syntax.contains("SQL syntax error"));
     }
 }
