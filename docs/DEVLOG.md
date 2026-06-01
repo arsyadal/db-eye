@@ -20,6 +20,7 @@ Catatan perkembangan DB-Eye. Update file ini setiap ada perubahan besar agar kon
 - CRUD execution sudah memakai bind placeholders untuk values.
 - Read-only mode ditambahkan via `--read-only` / `-r` untuk memblokir CRUD dan custom SQL write.
 - Friendly database error formatter ditambahkan untuk constraint, permission, connection, dan syntax errors.
+- SQLite CRUD end-to-end test ditambahkan untuk insert/update/delete.
 - SQL preview masih menampilkan SQL literal agar user mudah membaca perubahan sebelum save.
 - Update/delete saat ini membutuhkan primary key tunggal.
 - PostgreSQL metadata masih fokus schema `public`.
@@ -28,7 +29,7 @@ Catatan perkembangan DB-Eye. Update file ini setiap ada perubahan besar agar kon
 ### Validasi
 
 - `cargo fmt` sukses.
-- `cargo test` sukses: 8 tests.
+- `cargo test` sukses: 9 tests.
 - `cargo check` sukses.
 - `cargo clippy` 0 error, masih ada warning cleanup non-blocking.
 
@@ -41,7 +42,7 @@ Catatan perkembangan DB-Eye. Update file ini setiap ada perubahan besar agar kon
 
 ### Next Recommended Work
 
-1. Tambahkan SQLite integration tests untuk insert/update/delete end-to-end.
-2. Tambahkan support composite primary key.
-3. Tambahkan PostgreSQL schema support.
-4. Tambahkan help screen `?` untuk keybindings.
+1. Tambahkan support composite primary key.
+2. Tambahkan PostgreSQL schema support.
+3. Tambahkan help screen `?` untuk keybindings.
+4. Tambahkan query history.

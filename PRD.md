@@ -212,7 +212,7 @@ DB-Eye bisa dianggap production-ready jika:
 ### v0.3
 
 - Parameterized CRUD. ✅ initial implementation
-- SQLite integration tests.
+- SQLite integration tests. ✅ initial CRUD coverage
 - Read-only mode. ✅ initial implementation
 - Better error messages. ✅ initial implementation
 

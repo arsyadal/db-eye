@@ -16,6 +16,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
 - SQLite test untuk parameterized write values.
 - Read-only mode via `--read-only` / `-r` untuk memblokir write actions dan destructive custom SQL.
 - Friendly database error formatter untuk constraint, permission, connection, dan syntax errors.
+- SQLite CRUD end-to-end test untuk insert/update/delete flow.
 
 ### Changed
 

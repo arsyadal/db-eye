@@ -1510,4 +1510,67 @@ mod tests {
         assert!(!App::is_read_only_sql("delete from users"));
         assert!(!App::is_read_only_sql("drop table users"));
     }
+
+    #[tokio::test]
+    async fn sqlite_crud_statements_execute_end_to_end() {
+        let path =
+            std::env::temp_dir().join(format!("db-eye-crud-test-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        std::fs::File::create(&path).unwrap();
+        let db = DbClient::connect(path.to_str().unwrap()).await.unwrap();
+        sqlx::query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)")
+            .execute(&db.pool)
+            .await
+            .unwrap();
+
+        let insert = form(CrudMode::Insert).build_statement();
+        assert_eq!(
+            db.execute_write_with_values(&insert.sql, &insert.values)
+                .await
+                .unwrap(),
+            1
+        );
+
+        let mut update_form = form(CrudMode::Update);
+        update_form.values = vec![
+            "1".to_string(),
+            "Grace".to_string(),
+            "g@example.test".to_string(),
+        ];
+        let update = update_form.build_statement();
+        assert_eq!(
+            db.execute_write_with_values(&update.sql, &update.values)
+                .await
+                .unwrap(),
+            1
+        );
+
+        let result = db
+            .execute_query("SELECT id, name, email FROM users WHERE id = 1")
+            .await
+            .unwrap();
+        assert_eq!(
+            result.rows,
+            vec![vec![
+                "1".to_string(),
+                "Grace".to_string(),
+                "g@example.test".to_string()
+            ]]
+        );
+
+        assert_eq!(
+            db.execute_write_with_values(
+                "DELETE FROM users WHERE id = ?",
+                &[Some("1".to_string())]
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        let result = db.execute_query("SELECT id FROM users").await.unwrap();
+        assert!(result.rows.is_empty());
+
+        db.pool.close().await;
+        let _ = std::fs::remove_file(path);
+    }
 }
