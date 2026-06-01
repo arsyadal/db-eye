@@ -299,6 +299,7 @@ impl DbClient {
                             name,
                             data_type,
                             is_pk: pk > 0,
+                            pk_order: pk,
                             fk_table: None,
                             fk_column: None,
                         }
@@ -328,10 +329,11 @@ impl DbClient {
             DbType::Postgres => {
                 let sql = format!(
                     "SELECT c.column_name::text, c.data_type::text, \
-                     CASE WHEN pk.column_name IS NOT NULL THEN 1 ELSE 0 END \
+                     CASE WHEN pk.column_name IS NOT NULL THEN 1 ELSE 0 END, \
+                     COALESCE(pk.ordinal_position, 0)::text \
                      FROM information_schema.columns c \
                      LEFT JOIN ( \
-                         SELECT kcu.column_name \
+                         SELECT kcu.column_name, kcu.ordinal_position \
                          FROM information_schema.table_constraints tc \
                          JOIN information_schema.key_column_usage kcu \
                            ON tc.constraint_name = kcu.constraint_name \
@@ -348,6 +350,7 @@ impl DbClient {
                         name: row_cell(r, 0),
                         data_type: row_cell(r, 1),
                         is_pk: row_cell(r, 2) == "1",
+                        pk_order: row_cell(r, 3).parse::<i64>().unwrap_or(0),
                         fk_table: None,
                         fk_column: None,
                     })
@@ -380,10 +383,16 @@ impl DbClient {
             }
             DbType::Mysql => {
                 let sql = format!(
-                    "SELECT column_name, data_type, IF(column_key='PRI','1','0') \
-                     FROM information_schema.columns \
-                     WHERE table_schema = DATABASE() AND table_name = '{}' \
-                     ORDER BY ordinal_position",
+                    "SELECT c.column_name, c.data_type, IF(kcu.column_name IS NULL,'0','1'), \
+                     COALESCE(kcu.ordinal_position, 0) \
+                     FROM information_schema.columns c \
+                     LEFT JOIN information_schema.key_column_usage kcu \
+                       ON c.table_schema = kcu.table_schema \
+                      AND c.table_name = kcu.table_name \
+                      AND c.column_name = kcu.column_name \
+                      AND kcu.constraint_name = 'PRIMARY' \
+                     WHERE c.table_schema = DATABASE() AND c.table_name = '{}' \
+                     ORDER BY c.ordinal_position",
                     table
                 );
                 let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
@@ -393,6 +402,7 @@ impl DbClient {
                         name: row_cell(r, 0),
                         data_type: row_cell(r, 1),
                         is_pk: row_cell(r, 2) == "1",
+                        pk_order: row_cell(r, 3).parse::<i64>().unwrap_or(0),
                         fk_table: None,
                         fk_column: None,
                     })
@@ -479,6 +489,7 @@ pub struct ColumnInfo {
     pub name: String,
     pub data_type: String,
     pub is_pk: bool,
+    pub pk_order: i64,
     pub fk_table: Option<String>,
     pub fk_column: Option<String>,
 }

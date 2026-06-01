@@ -99,6 +99,7 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 - Real-time search across all columns
 - Custom SQL queries with results displayed inline
 - Insert, update, and delete rows from the data panel
+- Composite primary key support for update/delete
 - Read-only mode for safer browsing
 - Friendly database errors for constraints, permissions, and SQL syntax
 - Foreign-key value hints in insert/update forms

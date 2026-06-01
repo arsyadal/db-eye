@@ -200,7 +200,7 @@ DB-Eye bisa dianggap production-ready jika:
 - Semua P0 selesai.
 - CI hijau untuk fmt, clippy, test, dan release build.
 - CRUD menggunakan parameterized query.
-- Update/delete aman untuk primary key tunggal dan composite key.
+- Update/delete aman untuk primary key tunggal dan composite key. ✅ initial implementation
 - PostgreSQL schema non-public didukung.
 - Ada read-only mode.
 - Error handling tidak menyebabkan crash pada skenario umum.
@@ -219,7 +219,7 @@ DB-Eye bisa dianggap production-ready jika:
 ### v0.4
 
 - PostgreSQL schema support.
-- Composite primary key support.
+- Composite primary key support. ✅ initial implementation
 - Query history.
 - Rows affected untuk write query.
 

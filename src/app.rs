@@ -159,8 +159,7 @@ pub struct CrudForm {
     pub columns: Vec<ColumnInfo>,
     pub values: Vec<String>,
     pub fk_hints: Vec<Vec<String>>,
-    pub pk_column: String,
-    pub pk_value: String,
+    pub pk_values: Vec<(String, String)>,
     pub active_field: usize,
     pub mode: CrudMode,
     pub ident_quote: char,
@@ -207,11 +206,10 @@ impl CrudForm {
                     .map(|(c, v)| format!("{} = {}", self.quote_ident(&c.name), Self::sql_value(v)))
                     .collect();
                 format!(
-                    "UPDATE {} SET {} WHERE {} = {}",
+                    "UPDATE {} SET {} WHERE {}",
                     self.quote_ident(&self.table),
                     sets.join(", "),
-                    self.quote_ident(&self.pk_column),
-                    Self::sql_value(&self.pk_value)
+                    self.pk_literal_conditions()
                 )
             }
         }
@@ -258,17 +256,39 @@ impl CrudForm {
                         ));
                     }
                 }
-                values.push(Self::form_value(&self.pk_value));
+                let where_clause = self.pk_placeholder_conditions(&mut values);
                 let sql = format!(
-                    "UPDATE {} SET {} WHERE {} = {}",
+                    "UPDATE {} SET {} WHERE {}",
                     self.quote_ident(&self.table),
                     sets.join(", "),
-                    self.quote_ident(&self.pk_column),
-                    self.placeholder(values.len())
+                    where_clause
                 );
                 CrudStatement { sql, values }
             }
         }
+    }
+
+    fn pk_literal_conditions(&self) -> String {
+        self.pk_values
+            .iter()
+            .map(|(name, value)| format!("{} = {}", self.quote_ident(name), Self::sql_value(value)))
+            .collect::<Vec<_>>()
+            .join(" AND ")
+    }
+
+    fn pk_placeholder_conditions(&self, values: &mut Vec<Option<String>>) -> String {
+        self.pk_values
+            .iter()
+            .map(|(name, value)| {
+                values.push(Self::form_value(value));
+                format!(
+                    "{} = {}",
+                    self.quote_ident(name),
+                    self.placeholder(values.len())
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" AND ")
     }
 
     fn quote_ident(&self, ident: &str) -> String {
@@ -1075,19 +1095,13 @@ impl App {
                         fk_hints.push(hints);
                     }
                     let values = columns.iter().map(|_| String::new()).collect();
-                    let pk_column = columns
-                        .iter()
-                        .find(|c| c.is_pk)
-                        .map(|c| c.name.clone())
-                        .unwrap_or_default();
                     self.crud_form = Some(CrudForm {
                         table,
                         active_field: columns.iter().position(|c| !c.is_pk).unwrap_or(0),
                         columns,
                         values,
                         fk_hints,
-                        pk_column,
-                        pk_value: String::new(),
+                        pk_values: vec![],
                         mode: CrudMode::Insert,
                         ident_quote: tab.db.identifier_quote(),
                         numbered_placeholders: tab.db.uses_numbered_placeholders(),
@@ -1161,27 +1175,29 @@ impl App {
                                 .unwrap_or_default()
                         })
                         .collect();
-                    let pk_col = columns.iter().find(|c| c.is_pk).cloned();
-                    let (pk_column, pk_value) = if let Some(pk) = pk_col {
-                        let val = result
-                            .columns
-                            .iter()
-                            .position(|c| c == &pk.name)
-                            .and_then(|i| row_data.get(i))
-                            .cloned()
-                            .unwrap_or_default();
-                        (pk.name, val)
-                    } else {
-                        (String::new(), String::new())
-                    };
+                    let mut pk_columns: Vec<ColumnInfo> =
+                        columns.iter().filter(|c| c.is_pk).cloned().collect();
+                    pk_columns.sort_by_key(|c| c.pk_order);
+                    let pk_values: Vec<(String, String)> = pk_columns
+                        .iter()
+                        .map(|pk| {
+                            let val = result
+                                .columns
+                                .iter()
+                                .position(|c| c == &pk.name)
+                                .and_then(|i| row_data.get(i))
+                                .cloned()
+                                .unwrap_or_default();
+                            (pk.name.clone(), val)
+                        })
+                        .collect();
                     self.crud_form = Some(CrudForm {
                         active_field: columns.iter().position(|c| !c.is_pk).unwrap_or(0),
                         table,
                         columns,
                         values,
                         fk_hints,
-                        pk_column,
-                        pk_value,
+                        pk_values,
                         mode: CrudMode::Update,
                         ident_quote: tab.db.identifier_quote(),
                         numbered_placeholders: tab.db.uses_numbered_placeholders(),
@@ -1225,34 +1241,43 @@ impl App {
         if let Some(tab) = self.tabs.get(self.active_tab) {
             match tab.db.get_columns(&table).await {
                 Ok(col_info) => {
-                    let pk = match col_info.iter().find(|c| c.is_pk) {
-                        Some(pk) => pk,
-                        None => {
-                            self.status = "Delete requires a primary key".into();
-                            return;
-                        }
-                    };
-                    let pk_val = columns
-                        .iter()
-                        .position(|c| c == &pk.name)
-                        .and_then(|i| row_data.get(i))
-                        .cloned()
-                        .unwrap_or_default();
+                    let mut pk_columns: Vec<ColumnInfo> =
+                        col_info.iter().filter(|c| c.is_pk).cloned().collect();
+                    if pk_columns.is_empty() {
+                        self.status = "Delete requires a primary key".into();
+                        return;
+                    }
+                    pk_columns.sort_by_key(|c| c.pk_order);
                     let quote = tab.db.identifier_quote();
                     let quote_ident = |ident: &str| {
                         let doubled = format!("{quote}{quote}");
                         format!("{quote}{}{quote}", ident.replace(quote, &doubled))
                     };
-                    let placeholder = if tab.db.uses_numbered_placeholders() {
-                        "$1".to_string()
-                    } else {
-                        "?".to_string()
-                    };
+                    let numbered_placeholders = tab.db.uses_numbered_placeholders();
+                    let mut values = Vec::new();
+                    let conditions: Vec<String> = pk_columns
+                        .iter()
+                        .enumerate()
+                        .map(|(i, pk)| {
+                            let pk_val = columns
+                                .iter()
+                                .position(|c| c == &pk.name)
+                                .and_then(|idx| row_data.get(idx))
+                                .cloned()
+                                .unwrap_or_default();
+                            values.push(CrudForm::form_value(&pk_val));
+                            let placeholder = if numbered_placeholders {
+                                format!("${}", i + 1)
+                            } else {
+                                "?".to_string()
+                            };
+                            format!("{} = {}", quote_ident(&pk.name), placeholder)
+                        })
+                        .collect();
                     let sql = format!(
-                        "DELETE FROM {} WHERE {} = {}",
+                        "DELETE FROM {} WHERE {}",
                         quote_ident(&table),
-                        quote_ident(&pk.name),
-                        placeholder
+                        conditions.join(" AND ")
                     );
                     let preview = row_data
                         .iter()
@@ -1263,7 +1288,7 @@ impl App {
                     self.delete_confirm = Some(DeleteConfirm {
                         description: format!("Row: {}...", preview),
                         sql,
-                        values: vec![CrudForm::form_value(&pk_val)],
+                        values,
                     });
                     self.screen = Screen::ConfirmDelete;
                 }
@@ -1432,10 +1457,12 @@ mod tests {
     use super::*;
 
     fn col(name: &str, is_pk: bool) -> ColumnInfo {
+        let pk_order = if is_pk { 1 } else { 0 };
         ColumnInfo {
             name: name.to_string(),
             data_type: "text".to_string(),
             is_pk,
+            pk_order,
             fk_table: None,
             fk_column: None,
         }
@@ -1447,8 +1474,7 @@ mod tests {
             columns: vec![col("id", true), col("name", false), col("email", false)],
             values: vec!["1".to_string(), "Ada".to_string(), "NULL".to_string()],
             fk_hints: vec![vec![], vec![], vec![]],
-            pk_column: "id".to_string(),
-            pk_value: "1".to_string(),
+            pk_values: vec![("id".to_string(), "1".to_string())],
             active_field: 1,
             mode,
             ident_quote: '"',
@@ -1490,6 +1516,55 @@ mod tests {
         assert_eq!(
             stmt.sql,
             "UPDATE \"users\" SET \"name\" = $1, \"email\" = $2 WHERE \"id\" = $3"
+        );
+    }
+
+    #[test]
+    fn composite_pk_update_statement_uses_all_pk_columns() {
+        let form = CrudForm {
+            table: "memberships".to_string(),
+            columns: vec![
+                ColumnInfo {
+                    name: "tenant_id".to_string(),
+                    data_type: "text".to_string(),
+                    is_pk: true,
+                    pk_order: 1,
+                    fk_table: None,
+                    fk_column: None,
+                },
+                ColumnInfo {
+                    name: "user_id".to_string(),
+                    data_type: "text".to_string(),
+                    is_pk: true,
+                    pk_order: 2,
+                    fk_table: None,
+                    fk_column: None,
+                },
+                col("name", false),
+            ],
+            values: vec!["t1".to_string(), "u1".to_string(), "Ada".to_string()],
+            fk_hints: vec![vec![], vec![], vec![]],
+            pk_values: vec![
+                ("tenant_id".to_string(), "t1".to_string()),
+                ("user_id".to_string(), "u1".to_string()),
+            ],
+            active_field: 2,
+            mode: CrudMode::Update,
+            ident_quote: '"',
+            numbered_placeholders: false,
+        };
+        let stmt = form.build_statement();
+        assert_eq!(
+            stmt.sql,
+            "UPDATE \"memberships\" SET \"name\" = ? WHERE \"tenant_id\" = ? AND \"user_id\" = ?"
+        );
+        assert_eq!(
+            stmt.values,
+            vec![
+                Some("Ada".to_string()),
+                Some("t1".to_string()),
+                Some("u1".to_string())
+            ]
         );
     }
 
@@ -1568,6 +1643,99 @@ mod tests {
             1
         );
         let result = db.execute_query("SELECT id FROM users").await.unwrap();
+        assert!(result.rows.is_empty());
+
+        db.pool.close().await;
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn sqlite_composite_pk_crud_executes_end_to_end() {
+        let path = std::env::temp_dir().join(format!(
+            "db-eye-composite-crud-test-{}.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        std::fs::File::create(&path).unwrap();
+        let db = DbClient::connect(path.to_str().unwrap()).await.unwrap();
+        sqlx::query(
+            "CREATE TABLE memberships (tenant_id TEXT, user_id TEXT, name TEXT, PRIMARY KEY (tenant_id, user_id))",
+        )
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+        let columns = db.get_columns("memberships").await.unwrap();
+        let pk_orders: Vec<(String, i64)> = columns
+            .iter()
+            .filter(|c| c.is_pk)
+            .map(|c| (c.name.clone(), c.pk_order))
+            .collect();
+        assert_eq!(
+            pk_orders,
+            vec![("tenant_id".to_string(), 1), ("user_id".to_string(), 2)]
+        );
+
+        let insert_form = CrudForm {
+            table: "memberships".to_string(),
+            columns: columns.clone(),
+            values: vec!["t1".to_string(), "u1".to_string(), "Ada".to_string()],
+            fk_hints: vec![vec![], vec![], vec![]],
+            pk_values: vec![],
+            active_field: 2,
+            mode: CrudMode::Insert,
+            ident_quote: '"',
+            numbered_placeholders: false,
+        };
+        let insert = insert_form.build_statement();
+        assert_eq!(
+            db.execute_write_with_values(&insert.sql, &insert.values)
+                .await
+                .unwrap(),
+            1
+        );
+
+        let update_form = CrudForm {
+            table: "memberships".to_string(),
+            columns,
+            values: vec!["t1".to_string(), "u1".to_string(), "Grace".to_string()],
+            fk_hints: vec![vec![], vec![], vec![]],
+            pk_values: vec![
+                ("tenant_id".to_string(), "t1".to_string()),
+                ("user_id".to_string(), "u1".to_string()),
+            ],
+            active_field: 2,
+            mode: CrudMode::Update,
+            ident_quote: '"',
+            numbered_placeholders: false,
+        };
+        let update = update_form.build_statement();
+        assert_eq!(
+            db.execute_write_with_values(&update.sql, &update.values)
+                .await
+                .unwrap(),
+            1
+        );
+
+        let result = db
+            .execute_query("SELECT name FROM memberships WHERE tenant_id = 't1' AND user_id = 'u1'")
+            .await
+            .unwrap();
+        assert_eq!(result.rows, vec![vec!["Grace".to_string()]]);
+
+        assert_eq!(
+            db.execute_write_with_values(
+                "DELETE FROM memberships WHERE tenant_id = ? AND user_id = ?",
+                &[Some("t1".to_string()), Some("u1".to_string())],
+            )
+            .await
+            .unwrap(),
+            1
+        );
+        let result = db
+            .execute_query("SELECT name FROM memberships")
+            .await
+            .unwrap();
         assert!(result.rows.is_empty());
 
         db.pool.close().await;
