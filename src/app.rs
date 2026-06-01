@@ -164,6 +164,12 @@ pub struct CrudForm {
     pub active_field: usize,
     pub mode: CrudMode,
     pub ident_quote: char,
+    pub numbered_placeholders: bool,
+}
+
+pub struct CrudStatement {
+    pub sql: String,
+    pub values: Vec<Option<String>>,
 }
 
 impl CrudForm {
@@ -211,6 +217,60 @@ impl CrudForm {
         }
     }
 
+    pub fn build_statement(&self) -> CrudStatement {
+        match self.mode {
+            CrudMode::Insert => {
+                let mut cols = Vec::new();
+                let mut placeholders = Vec::new();
+                let mut values = Vec::new();
+                for (col, value) in self.columns.iter().zip(self.values.iter()) {
+                    if !col.is_pk || !value.is_empty() {
+                        cols.push(self.quote_ident(&col.name));
+                        values.push(Self::form_value(value));
+                        placeholders.push(self.placeholder(values.len()));
+                    }
+                }
+                let sql = if cols.is_empty() {
+                    format!(
+                        "INSERT INTO {} DEFAULT VALUES",
+                        self.quote_ident(&self.table)
+                    )
+                } else {
+                    format!(
+                        "INSERT INTO {} ({}) VALUES ({})",
+                        self.quote_ident(&self.table),
+                        cols.join(", "),
+                        placeholders.join(", ")
+                    )
+                };
+                CrudStatement { sql, values }
+            }
+            CrudMode::Update => {
+                let mut sets = Vec::new();
+                let mut values = Vec::new();
+                for (col, value) in self.columns.iter().zip(self.values.iter()) {
+                    if !col.is_pk {
+                        values.push(Self::form_value(value));
+                        sets.push(format!(
+                            "{} = {}",
+                            self.quote_ident(&col.name),
+                            self.placeholder(values.len())
+                        ));
+                    }
+                }
+                values.push(Self::form_value(&self.pk_value));
+                let sql = format!(
+                    "UPDATE {} SET {} WHERE {} = {}",
+                    self.quote_ident(&self.table),
+                    sets.join(", "),
+                    self.quote_ident(&self.pk_column),
+                    self.placeholder(values.len())
+                );
+                CrudStatement { sql, values }
+            }
+        }
+    }
+
     fn quote_ident(&self, ident: &str) -> String {
         let doubled = format!("{}{}", self.ident_quote, self.ident_quote);
         format!(
@@ -219,6 +279,22 @@ impl CrudForm {
             ident.replace(self.ident_quote, &doubled),
             self.ident_quote
         )
+    }
+
+    fn placeholder(&self, index: usize) -> String {
+        if self.numbered_placeholders {
+            format!("${index}")
+        } else {
+            "?".to_string()
+        }
+    }
+
+    fn form_value(value: &str) -> Option<String> {
+        if value.is_empty() || value.eq_ignore_ascii_case("NULL") {
+            None
+        } else {
+            Some(value.to_string())
+        }
     }
 
     fn sql_value(value: &str) -> String {
@@ -263,6 +339,7 @@ impl CrudForm {
 
 pub struct DeleteConfirm {
     pub sql: String,
+    pub values: Vec<Option<String>>,
     pub description: String,
 }
 
@@ -952,6 +1029,7 @@ impl App {
                         pk_value: String::new(),
                         mode: CrudMode::Insert,
                         ident_quote: tab.db.identifier_quote(),
+                        numbered_placeholders: tab.db.uses_numbered_placeholders(),
                     });
                     self.screen = Screen::CrudForm;
                     self.status = "Tab/↑↓: fields  Enter: save  Esc: cancel".into();
@@ -1041,6 +1119,7 @@ impl App {
                         pk_value,
                         mode: CrudMode::Update,
                         ident_quote: tab.db.identifier_quote(),
+                        numbered_placeholders: tab.db.uses_numbered_placeholders(),
                     });
                     self.screen = Screen::CrudForm;
                     self.status = "Tab/↑↓: fields  Enter: save  Esc: cancel".into();
@@ -1095,11 +1174,16 @@ impl App {
                         let doubled = format!("{quote}{quote}");
                         format!("{quote}{}{quote}", ident.replace(quote, &doubled))
                     };
+                    let placeholder = if tab.db.uses_numbered_placeholders() {
+                        "$1".to_string()
+                    } else {
+                        "?".to_string()
+                    };
                     let sql = format!(
                         "DELETE FROM {} WHERE {} = {}",
                         quote_ident(&table),
                         quote_ident(&pk.name),
-                        CrudForm::sql_value(&pk_val)
+                        placeholder
                     );
                     let preview = row_data
                         .iter()
@@ -1110,6 +1194,7 @@ impl App {
                     self.delete_confirm = Some(DeleteConfirm {
                         description: format!("Row: {}...", preview),
                         sql,
+                        values: vec![CrudForm::form_value(&pk_val)],
                     });
                     self.screen = Screen::ConfirmDelete;
                 }
@@ -1145,10 +1230,14 @@ impl App {
                 }
             }
             KeyCode::Enter => {
-                let sql = self.crud_form.as_ref().map(|f| f.build_sql());
-                if let Some(sql) = sql {
+                let statement = self.crud_form.as_ref().map(|f| f.build_statement());
+                if let Some(statement) = statement {
                     if let Some(tab) = self.tabs.get_mut(self.active_tab) {
-                        match tab.db.execute_write(&sql).await {
+                        match tab
+                            .db
+                            .execute_write_with_values(&statement.sql, &statement.values)
+                            .await
+                        {
                             Ok(rows) => {
                                 let mode = self.crud_form.as_ref().map(|f| f.mode.clone());
                                 let msg = match mode {
@@ -1179,10 +1268,13 @@ impl App {
     async fn handle_confirm_delete(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
-                let sql = self.delete_confirm.as_ref().map(|d| d.sql.clone());
-                if let Some(sql) = sql {
+                let statement = self
+                    .delete_confirm
+                    .as_ref()
+                    .map(|d| (d.sql.clone(), d.values.clone()));
+                if let Some((sql, values)) = statement {
                     if let Some(tab) = self.tabs.get_mut(self.active_tab) {
-                        match tab.db.execute_write(&sql).await {
+                        match tab.db.execute_write_with_values(&sql, &values).await {
                             Ok(rows) => {
                                 let msg = format!("{} row deleted", rows);
                                 self.delete_confirm = None;
@@ -1249,5 +1341,72 @@ impl App {
                 Err(e) => self.status = format!("Error: {}", e),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn col(name: &str, is_pk: bool) -> ColumnInfo {
+        ColumnInfo {
+            name: name.to_string(),
+            data_type: "text".to_string(),
+            is_pk,
+            fk_table: None,
+            fk_column: None,
+        }
+    }
+
+    fn form(mode: CrudMode) -> CrudForm {
+        CrudForm {
+            table: "users".to_string(),
+            columns: vec![col("id", true), col("name", false), col("email", false)],
+            values: vec!["1".to_string(), "Ada".to_string(), "NULL".to_string()],
+            fk_hints: vec![vec![], vec![], vec![]],
+            pk_column: "id".to_string(),
+            pk_value: "1".to_string(),
+            active_field: 1,
+            mode,
+            ident_quote: '"',
+            numbered_placeholders: false,
+        }
+    }
+
+    #[test]
+    fn insert_statement_uses_bind_placeholders() {
+        let stmt = form(CrudMode::Insert).build_statement();
+        assert_eq!(
+            stmt.sql,
+            "INSERT INTO \"users\" (\"id\", \"name\", \"email\") VALUES (?, ?, ?)"
+        );
+        assert_eq!(
+            stmt.values,
+            vec![Some("1".to_string()), Some("Ada".to_string()), None]
+        );
+    }
+
+    #[test]
+    fn update_statement_uses_bind_placeholders_for_values_and_pk() {
+        let stmt = form(CrudMode::Update).build_statement();
+        assert_eq!(
+            stmt.sql,
+            "UPDATE \"users\" SET \"name\" = ?, \"email\" = ? WHERE \"id\" = ?"
+        );
+        assert_eq!(
+            stmt.values,
+            vec![Some("Ada".to_string()), None, Some("1".to_string())]
+        );
+    }
+
+    #[test]
+    fn postgres_statement_uses_numbered_placeholders() {
+        let mut form = form(CrudMode::Update);
+        form.numbered_placeholders = true;
+        let stmt = form.build_statement();
+        assert_eq!(
+            stmt.sql,
+            "UPDATE \"users\" SET \"name\" = $1, \"email\" = $2 WHERE \"id\" = $3"
+        );
     }
 }

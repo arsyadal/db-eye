@@ -17,21 +17,29 @@ Catatan perkembangan DB-Eye. Update file ini setiap ada perubahan besar agar kon
 
 ### Catatan Teknis
 
-- CRUD saat ini masih membangun SQL string manual untuk values.
+- CRUD execution sudah memakai bind placeholders untuk values.
+- SQL preview masih menampilkan SQL literal agar user mudah membaca perubahan sebelum save.
 - Update/delete saat ini membutuhkan primary key tunggal.
 - PostgreSQL metadata masih fokus schema `public`.
 - Foreign-key UI masih berupa hints, belum dropdown/select.
 
+### Validasi
+
+- `cargo fmt` sukses.
+- `cargo test` sukses: 4 tests.
+- `cargo check` sukses.
+- `cargo clippy` 0 error, masih ada warning cleanup non-blocking.
+
 ### Risiko / Debt
 
-- Perlu parameterized query sebelum dianggap production-ready.
-- Perlu integration tests, minimal SQLite.
+- Perlu integration tests lebih lengkap untuk flow CRUD end-to-end.
 - Perlu handling tipe data yang lebih benar, terutama NULL vs string `"NULL"`.
 - Perlu support composite primary key.
+- Perlu read-only mode sebelum production usage.
 
 ### Next Recommended Work
 
-1. Implement parameterized CRUD.
-2. Tambahkan SQLite integration tests.
-3. Tambahkan read-only mode.
-4. Perbaiki error message constraint violation.
+1. Tambahkan read-only mode.
+2. Tambahkan SQLite integration tests untuk insert/update/delete end-to-end.
+3. Perbaiki error message constraint violation.
+4. Tambahkan support composite primary key.

@@ -12,6 +12,12 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
 - `docs/DEVELOPMENT.md` untuk alur development dan definition of done.
 - `docs/DEVLOG.md` untuk catatan perkembangan.
 - Template feature spec dan release checklist.
+- Unit tests untuk CRUD statement builder.
+- SQLite test untuk parameterized write values.
+
+### Changed
+
+- CRUD insert/update/delete sekarang memakai bind placeholders untuk values, bukan menyisipkan value langsung ke SQL eksekusi.
 
 ## [0.2.0] - 2026-06-01
 

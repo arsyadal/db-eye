@@ -55,6 +55,10 @@ impl DbClient {
         format!("{quote}{}{quote}", ident.replace(quote, &doubled))
     }
 
+    pub fn uses_numbered_placeholders(&self) -> bool {
+        self.db_type == DbType::Postgres
+    }
+
     pub async fn list_databases(&self) -> Result<Vec<String>, sqlx::Error> {
         let sql = match self.db_type {
             DbType::Postgres => {
@@ -356,8 +360,16 @@ impl DbClient {
         Ok(rows.iter().map(|r| row_cell(r, 0)).collect())
     }
 
-    pub async fn execute_write(&self, sql: &str) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query(sql).execute(&self.pool).await?;
+    pub async fn execute_write_with_values(
+        &self,
+        sql: &str,
+        values: &[Option<String>],
+    ) -> Result<u64, sqlx::Error> {
+        let mut query = sqlx::query(sql);
+        for value in values {
+            query = query.bind(value.clone());
+        }
+        let result = query.execute(&self.pool).await?;
         Ok(result.rows_affected())
     }
 
@@ -444,4 +456,41 @@ fn row_to_strings(row: &AnyRow) -> Vec<String> {
                 .unwrap_or_else(|_| "NULL".to_string())
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn execute_write_with_values_binds_sqlite_values() {
+        let path = std::env::temp_dir().join(format!("db-eye-test-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        std::fs::File::create(&path).unwrap();
+        let db = DbClient::connect(path.to_str().unwrap()).await.unwrap();
+        sqlx::query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)")
+            .execute(&db.pool)
+            .await
+            .unwrap();
+
+        let rows = db
+            .execute_write_with_values(
+                "INSERT INTO users (name, email) VALUES (?, ?)",
+                &[Some("Ada's".to_string()), None],
+            )
+            .await
+            .unwrap();
+        assert_eq!(rows, 1);
+
+        let result = db
+            .execute_query("SELECT name, email FROM users WHERE id = 1")
+            .await
+            .unwrap();
+        assert_eq!(
+            result.rows,
+            vec![vec!["Ada's".to_string(), "NULL".to_string()]]
+        );
+        db.pool.close().await;
+        let _ = std::fs::remove_file(path);
+    }
 }
