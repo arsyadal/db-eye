@@ -5,11 +5,12 @@ Terminal UI database browser. SQLite, PostgreSQL, MySQL.
 ## Install
 
 ```bash
-# Build from source
-cargo build --release
-cp target/release/db-eye /usr/local/bin/
+cargo install db-eye
+```
 
-# Or run directly
+Or run from source:
+
+```bash
 cargo run -- ./path/to/file.db
 ```
 
