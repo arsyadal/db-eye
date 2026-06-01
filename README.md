@@ -53,6 +53,9 @@ db-eye
 | `h` / `l` | Scroll columns |
 | `/` | Search / filter rows (real-time) |
 | `:` | Enter SQL query |
+| `i` | Insert row |
+| `u` | Update selected row (requires primary key) |
+| `d` | Delete selected row (requires primary key + confirmation) |
 | `e` | Export visible data to CSV |
 | `Tab` | Switch focus to tables panel |
 | `q` / `Esc` | Back to tables panel |
@@ -83,6 +86,8 @@ db-eye
 - Browse tables and data with vim-style navigation
 - Real-time search across all columns
 - Custom SQL queries with results displayed inline
+- Insert, update, and delete rows from the data panel
+- Foreign-key value hints in insert/update forms
 - Export query results to CSV
 - Multiple simultaneous DB connections (tabs)
 - PostgreSQL: connect to server → pick database from list

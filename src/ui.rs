@@ -1,10 +1,10 @@
-use crate::app::{App, ConnectForm, DbTypeChoice, Focus, Screen};
+use crate::app::{App, ConnectForm, CrudMode, DbTypeChoice, Focus, Screen};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState},
-    Frame,
 };
 
 pub fn draw(f: &mut Frame, app: &App) {
@@ -19,6 +19,11 @@ pub fn draw(f: &mut Frame, app: &App) {
         Screen::Search => {
             draw_main(f, app);
             draw_search_bar(f, app);
+        }
+        Screen::CrudForm => draw_crud_form(f, app),
+        Screen::ConfirmDelete => {
+            draw_main(f, app);
+            draw_confirm_delete(f, app);
         }
     }
 }
@@ -50,8 +55,11 @@ fn db_type_selector<'a>(app: &'a App) -> Paragraph<'a> {
             vec![Span::styled(label, style)]
         })
         .collect();
-    Paragraph::new(Line::from(spans))
-        .block(Block::default().borders(Borders::ALL).title(" DB Type  ←/→ "))
+    Paragraph::new(Line::from(spans)).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" DB Type  ←/→ "),
+    )
 }
 
 fn draw_connect_sqlite(f: &mut Frame, app: &App) {
@@ -71,7 +79,10 @@ fn draw_connect_sqlite(f: &mut Frame, app: &App) {
 
     f.render_widget(
         Paragraph::new(vec![
-            Line::from(Span::styled("DB-EYE", Style::default().add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled(
+                "DB-EYE",
+                Style::default().add_modifier(Modifier::BOLD),
+            )),
             Line::from(Span::styled(
                 "Database Browser",
                 Style::default().fg(Color::DarkGray),
@@ -97,7 +108,10 @@ fn draw_connect_sqlite(f: &mut Frame, app: &App) {
             .block(Block::default().borders(Borders::ALL).title(" Status ")),
         chunks[5],
     );
-    f.set_cursor_position((chunks[3].x + app.sqlite_input.len() as u16 + 1, chunks[3].y + 1));
+    f.set_cursor_position((
+        chunks[3].x + app.sqlite_input.len() as u16 + 1,
+        chunks[3].y + 1,
+    ));
 }
 
 fn draw_connect_server(f: &mut Frame, app: &App) {
@@ -120,7 +134,10 @@ fn draw_connect_server(f: &mut Frame, app: &App) {
 
     f.render_widget(
         Paragraph::new(vec![
-            Line::from(Span::styled("DB-EYE", Style::default().add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled(
+                "DB-EYE",
+                Style::default().add_modifier(Modifier::BOLD),
+            )),
             Line::from(Span::styled(
                 "Database Browser",
                 Style::default().fg(Color::DarkGray),
@@ -265,8 +282,7 @@ fn draw_main(f: &mut Frame, app: &App) {
     draw_data_panel(f, app, horiz[1]);
 
     f.render_widget(
-        Paragraph::new(app.status.as_str())
-            .block(Block::default().borders(Borders::ALL)),
+        Paragraph::new(app.status.as_str()).block(Block::default().borders(Borders::ALL)),
         vert[2],
     );
 }
@@ -314,13 +330,12 @@ fn draw_tables_panel(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
-    let table = Table::new(rows, [Constraint::Percentage(100)])
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(format!(" Tables ({}) ", tab.tables.len()))
-                .border_style(border_style),
-        );
+    let table = Table::new(rows, [Constraint::Percentage(100)]).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(format!(" Tables ({}) ", tab.tables.len()))
+            .border_style(border_style),
+    );
     f.render_widget(table, area);
 }
 
@@ -348,8 +363,12 @@ fn draw_data_panel(f: &mut Frame, app: &App, area: Rect) {
 
     if tab.result.is_none() {
         f.render_widget(
-            Paragraph::new("\n  Enter: open table  Tab: switch focus")
-                .block(Block::default().borders(Borders::ALL).title(" Data ").border_style(border_style)),
+            Paragraph::new("\n  Enter: open table  Tab: switch focus").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Data ")
+                    .border_style(border_style),
+            ),
             area,
         );
         return;
@@ -415,9 +434,12 @@ fn draw_data_panel(f: &mut Frame, app: &App, area: Rect) {
     state.select(Some(tab.selected_row));
 
     f.render_stateful_widget(
-        Table::new(rows, constraints)
-            .header(header)
-            .block(Block::default().borders(Borders::ALL).title(title).border_style(border_style)),
+        Table::new(rows, constraints).header(header).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(border_style),
+        ),
         area,
         &mut state,
     );
@@ -491,6 +513,185 @@ fn draw_search_bar(f: &mut Frame, app: &App) {
         bar_area.x + app.search_input.len() as u16 + 2,
         bar_area.y + 1,
     ));
+}
+
+fn draw_crud_form(f: &mut Frame, app: &App) {
+    let form = match app.crud_form.as_ref() {
+        Some(f) => f,
+        None => return,
+    };
+
+    let title = match form.mode {
+        CrudMode::Insert => format!(" Insert — {} ", form.table),
+        CrudMode::Update => format!(" Update — {} ", form.table),
+    };
+
+    let area = f.area();
+    let active_hints = form
+        .fk_hints
+        .get(form.active_field)
+        .map(|h| h.as_slice())
+        .unwrap_or(&[]);
+    let hint_height: u16 = if active_hints.is_empty() { 0 } else { 3 };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(hint_height),
+            Constraint::Length(5),
+            Constraint::Length(3),
+        ])
+        .margin(2)
+        .split(area);
+
+    // Fields
+    let row_height = 3u16;
+    let max_visible = (chunks[0].height / row_height) as usize;
+    let active = form.active_field;
+    let start = if active >= max_visible {
+        active + 1 - max_visible
+    } else {
+        0
+    };
+
+    let field_area = chunks[0];
+    let mut y = field_area.y;
+
+    for (i, col) in form
+        .columns
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(max_visible)
+    {
+        let is_active = i == active;
+        let is_pk = col.is_pk;
+        let display_val = if is_pk && form.mode == CrudMode::Update {
+            format!("{} [PK - read only]", form.values[i])
+        } else {
+            form.values[i].clone()
+        };
+
+        let editable = !is_pk || form.mode == CrudMode::Insert;
+        let border_style = if is_active && editable {
+            Style::default().add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+
+        let fk_label = col
+            .fk_table
+            .as_deref()
+            .map(|t| format!(" {} ({}) → {} ", col.name, col.data_type, t))
+            .unwrap_or_else(|| format!(" {} ({}) ", col.name, col.data_type));
+        let field_rect = Rect {
+            x: field_area.x,
+            y,
+            width: field_area.width,
+            height: row_height,
+        };
+        f.render_widget(
+            Paragraph::new(display_val.as_str()).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(fk_label)
+                    .border_style(border_style),
+            ),
+            field_rect,
+        );
+        if is_active && editable {
+            f.set_cursor_position((
+                field_rect.x + display_val.len() as u16 + 1,
+                field_rect.y + 1,
+            ));
+        }
+        y += row_height;
+    }
+
+    // FK hint (valid values for active FK field)
+    if hint_height > 0 {
+        let vals_text = active_hints
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("  |  ");
+        f.render_widget(
+            Paragraph::new(format!("  {}", vals_text)).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Valid Values ")
+                    .border_style(Style::default().fg(Color::DarkGray)),
+            ),
+            chunks[1],
+        );
+    }
+
+    // SQL Preview
+    let sql = form.build_sql();
+    f.render_widget(
+        Paragraph::new(sql.as_str()).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" SQL Preview ")
+                .border_style(Style::default().fg(Color::DarkGray)),
+        ),
+        chunks[2],
+    );
+
+    // Keys / error
+    let hint = if app.status.starts_with("Error") {
+        app.status.as_str()
+    } else {
+        "  Tab or ↑↓: navigate fields    Enter: save    Esc: cancel"
+    };
+    let hint_style = if app.status.starts_with("Error") {
+        Style::default().add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    f.render_widget(
+        Paragraph::new(hint).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(hint_style),
+        ),
+        chunks[3],
+    );
+}
+
+fn draw_confirm_delete(f: &mut Frame, app: &App) {
+    let confirm = match app.delete_confirm.as_ref() {
+        Some(c) => c,
+        None => return,
+    };
+
+    let area = centered_rect(60, 10, f.area());
+    f.render_widget(Clear, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(3)])
+        .split(area);
+
+    let content = format!(
+        "\n  {}\n\n  SQL: {}\n\n  Tekan Y untuk konfirmasi, N untuk batal",
+        confirm.description, confirm.sql
+    );
+    f.render_widget(
+        Paragraph::new(content).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" ⚠ Konfirmasi Delete ")
+                .border_style(Style::default().add_modifier(Modifier::BOLD)),
+        ),
+        chunks[0],
+    );
+    f.render_widget(
+        Paragraph::new("  [Y] Ya, hapus     [N] Batal")
+            .block(Block::default().borders(Borders::ALL)),
+        chunks[1],
+    );
 }
 
 fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {

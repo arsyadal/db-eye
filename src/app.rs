@@ -1,7 +1,7 @@
-use crate::db::{DbClient, QueryResult};
+use crate::db::{ColumnInfo, DbClient, QueryResult};
 use crate::ui;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
-use ratatui::{backend::Backend, Terminal};
+use ratatui::{Terminal, backend::Backend};
 use std::{fs, time::Duration};
 
 #[derive(Clone, PartialEq)]
@@ -144,6 +144,126 @@ pub enum Screen {
     Main,
     Query,
     Search,
+    CrudForm,
+    ConfirmDelete,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum CrudMode {
+    Insert,
+    Update,
+}
+
+pub struct CrudForm {
+    pub table: String,
+    pub columns: Vec<ColumnInfo>,
+    pub values: Vec<String>,
+    pub fk_hints: Vec<Vec<String>>,
+    pub pk_column: String,
+    pub pk_value: String,
+    pub active_field: usize,
+    pub mode: CrudMode,
+    pub ident_quote: char,
+}
+
+impl CrudForm {
+    pub fn build_sql(&self) -> String {
+        match self.mode {
+            CrudMode::Insert => {
+                let mut cols = Vec::new();
+                let mut vals = Vec::new();
+                for (col, value) in self.columns.iter().zip(self.values.iter()) {
+                    if !col.is_pk || !value.is_empty() {
+                        cols.push(self.quote_ident(&col.name));
+                        vals.push(Self::sql_value(value));
+                    }
+                }
+                if cols.is_empty() {
+                    format!(
+                        "INSERT INTO {} DEFAULT VALUES",
+                        self.quote_ident(&self.table)
+                    )
+                } else {
+                    format!(
+                        "INSERT INTO {} ({}) VALUES ({})",
+                        self.quote_ident(&self.table),
+                        cols.join(", "),
+                        vals.join(", ")
+                    )
+                }
+            }
+            CrudMode::Update => {
+                let sets: Vec<String> = self
+                    .columns
+                    .iter()
+                    .zip(self.values.iter())
+                    .filter(|(c, _)| !c.is_pk)
+                    .map(|(c, v)| format!("{} = {}", self.quote_ident(&c.name), Self::sql_value(v)))
+                    .collect();
+                format!(
+                    "UPDATE {} SET {} WHERE {} = {}",
+                    self.quote_ident(&self.table),
+                    sets.join(", "),
+                    self.quote_ident(&self.pk_column),
+                    Self::sql_value(&self.pk_value)
+                )
+            }
+        }
+    }
+
+    fn quote_ident(&self, ident: &str) -> String {
+        let doubled = format!("{}{}", self.ident_quote, self.ident_quote);
+        format!(
+            "{}{}{}",
+            self.ident_quote,
+            ident.replace(self.ident_quote, &doubled),
+            self.ident_quote
+        )
+    }
+
+    fn sql_value(value: &str) -> String {
+        if value.is_empty() || value.eq_ignore_ascii_case("NULL") {
+            "NULL".to_string()
+        } else {
+            format!("'{}'", value.replace('\'', "''"))
+        }
+    }
+
+    pub fn editable_indices(&self) -> Vec<usize> {
+        self.columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| !c.is_pk || self.mode == CrudMode::Insert)
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    pub fn next_field(&mut self) {
+        let editable = self.editable_indices();
+        if let Some(pos) = editable.iter().position(|&i| i == self.active_field) {
+            self.active_field = editable[(pos + 1) % editable.len()];
+        } else if !editable.is_empty() {
+            self.active_field = editable[0];
+        }
+    }
+
+    pub fn prev_field(&mut self) {
+        let editable = self.editable_indices();
+        if let Some(pos) = editable.iter().position(|&i| i == self.active_field) {
+            self.active_field = editable[if pos == 0 {
+                editable.len() - 1
+            } else {
+                pos - 1
+            }];
+        } else if !editable.is_empty() {
+            self.active_field = editable[0];
+        }
+    }
+}
+
+pub struct DeleteConfirm {
+    pub sql: String,
+    pub description: String,
 }
 
 pub struct Tab {
@@ -249,6 +369,8 @@ pub struct App {
     pub search_input: String,
     pub status: String,
     pub page_size: usize,
+    pub crud_form: Option<CrudForm>,
+    pub delete_confirm: Option<DeleteConfirm>,
 }
 
 impl App {
@@ -266,6 +388,8 @@ impl App {
             search_input: String::new(),
             status: "←/→: switch DB type  Enter: connect  Ctrl+C: quit".into(),
             page_size: 100,
+            crud_form: None,
+            delete_confirm: None,
         }
     }
 
@@ -299,6 +423,8 @@ impl App {
                         Screen::Main => self.handle_main(key.code, key.modifiers).await,
                         Screen::Query => self.handle_query(key.code).await,
                         Screen::Search => self.handle_search(key.code),
+                        Screen::CrudForm => self.handle_crud_form(key.code).await,
+                        Screen::ConfirmDelete => self.handle_confirm_delete(key.code).await,
                     }
                 }
             }
@@ -336,8 +462,10 @@ impl App {
                 self.screen = Screen::Main;
                 self.focus = Focus::Tables;
                 self.sqlite_input.clear();
-                self.status =
-                    format!("Connected: {}  |  Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close", path);
+                self.status = format!(
+                    "Connected: {}  |  Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close",
+                    path
+                );
             }
             Err(e) => {
                 self.status = format!("Error: {}", e);
@@ -405,8 +533,10 @@ impl App {
                 self.screen = Screen::Main;
                 self.focus = Focus::Tables;
                 self.server_conn = None;
-                self.status =
-                    format!("Connected: {}  |  Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close  Esc:back-to-db-list", display);
+                self.status = format!(
+                    "Connected: {}  |  Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close  Esc:back-to-db-list",
+                    display
+                );
             }
             Err(e) => {
                 self.status = format!("Error: {}", e);
@@ -542,8 +672,14 @@ impl App {
         match key {
             KeyCode::Tab => {
                 self.focus = match self.focus {
-                    Focus::Tables => Focus::Data,
-                    Focus::Data => Focus::Tables,
+                    Focus::Tables => {
+                        self.status = "j/k:nav  i:insert  u:update  d:delete  e:export  /:search  :::query  Esc:back".into();
+                        Focus::Data
+                    }
+                    Focus::Data => {
+                        self.status = "Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close  Esc:back".into();
+                        Focus::Tables
+                    }
                 };
             }
             _ => match self.focus {
@@ -572,6 +708,9 @@ impl App {
             KeyCode::Enter => {
                 self.load_table_data().await;
                 self.focus = Focus::Data;
+                self.status =
+                    "j/k:nav  i:insert  u:update  d:delete  e:export  /:search  :::query  Esc:back"
+                        .into();
             }
             KeyCode::Esc => {
                 self.go_back().await;
@@ -689,6 +828,15 @@ impl App {
                     }
                 }
             }
+            KeyCode::Char('i') => {
+                self.open_insert_form().await;
+            }
+            KeyCode::Char('u') => {
+                self.open_update_form().await;
+            }
+            KeyCode::Char('d') => {
+                self.open_delete_confirm().await;
+            }
             KeyCode::Esc | KeyCode::Char('q') => {
                 if let Some(t) = self.current_tab_mut() {
                     t.result = None;
@@ -766,6 +914,307 @@ impl App {
         }
     }
 
+    async fn open_insert_form(&mut self) {
+        let table = match self.current_tab().and_then(|t| t.tables.get(t.table_index)) {
+            Some(t) => t.clone(),
+            None => return,
+        };
+        if let Some(tab) = self.tabs.get(self.active_tab) {
+            match tab.db.get_columns(&table).await {
+                Ok(columns) => {
+                    let mut fk_hints: Vec<Vec<String>> = Vec::new();
+                    for col in &columns {
+                        let hints = if let (Some(ref_table), Some(ref_col)) =
+                            (&col.fk_table, &col.fk_column)
+                        {
+                            tab.db
+                                .get_fk_values(ref_table, ref_col)
+                                .await
+                                .unwrap_or_default()
+                        } else {
+                            vec![]
+                        };
+                        fk_hints.push(hints);
+                    }
+                    let values = columns.iter().map(|_| String::new()).collect();
+                    let pk_column = columns
+                        .iter()
+                        .find(|c| c.is_pk)
+                        .map(|c| c.name.clone())
+                        .unwrap_or_default();
+                    self.crud_form = Some(CrudForm {
+                        table,
+                        active_field: columns.iter().position(|c| !c.is_pk).unwrap_or(0),
+                        columns,
+                        values,
+                        fk_hints,
+                        pk_column,
+                        pk_value: String::new(),
+                        mode: CrudMode::Insert,
+                        ident_quote: tab.db.identifier_quote(),
+                    });
+                    self.screen = Screen::CrudForm;
+                    self.status = "Tab/↑↓: fields  Enter: save  Esc: cancel".into();
+                }
+                Err(e) => self.status = format!("Error: {}", e),
+            }
+        }
+    }
+
+    async fn open_update_form(&mut self) {
+        let (table, row_data) = {
+            let tab = match self.current_tab() {
+                Some(t) => t,
+                None => return,
+            };
+            let table = match tab.tables.get(tab.table_index) {
+                Some(t) => t.clone(),
+                None => return,
+            };
+            let row = match tab.display_rows().get(tab.selected_row) {
+                Some(r) => r.clone(),
+                None => {
+                    self.status = "No row selected".into();
+                    return;
+                }
+            };
+            (table, row)
+        };
+        if let Some(tab) = self.tabs.get(self.active_tab) {
+            match tab.db.get_columns(&table).await {
+                Ok(columns) => {
+                    if !columns.iter().any(|c| c.is_pk) {
+                        self.status = "Update requires a primary key".into();
+                        return;
+                    }
+                    if !columns.iter().any(|c| !c.is_pk) {
+                        self.status = "No editable columns".into();
+                        return;
+                    }
+                    let mut fk_hints: Vec<Vec<String>> = Vec::new();
+                    for col in &columns {
+                        let hints = if let (Some(ref_table), Some(ref_col)) =
+                            (&col.fk_table, &col.fk_column)
+                        {
+                            tab.db
+                                .get_fk_values(ref_table, ref_col)
+                                .await
+                                .unwrap_or_default()
+                        } else {
+                            vec![]
+                        };
+                        fk_hints.push(hints);
+                    }
+                    let result = tab.result.as_ref().unwrap();
+                    let values: Vec<String> = columns
+                        .iter()
+                        .map(|col| {
+                            result
+                                .columns
+                                .iter()
+                                .position(|c| c == &col.name)
+                                .and_then(|i| row_data.get(i))
+                                .cloned()
+                                .unwrap_or_default()
+                        })
+                        .collect();
+                    let pk_col = columns.iter().find(|c| c.is_pk).cloned();
+                    let (pk_column, pk_value) = if let Some(pk) = pk_col {
+                        let val = result
+                            .columns
+                            .iter()
+                            .position(|c| c == &pk.name)
+                            .and_then(|i| row_data.get(i))
+                            .cloned()
+                            .unwrap_or_default();
+                        (pk.name, val)
+                    } else {
+                        (String::new(), String::new())
+                    };
+                    self.crud_form = Some(CrudForm {
+                        active_field: columns.iter().position(|c| !c.is_pk).unwrap_or(0),
+                        table,
+                        columns,
+                        values,
+                        fk_hints,
+                        pk_column,
+                        pk_value,
+                        mode: CrudMode::Update,
+                        ident_quote: tab.db.identifier_quote(),
+                    });
+                    self.screen = Screen::CrudForm;
+                    self.status = "Tab/↑↓: fields  Enter: save  Esc: cancel".into();
+                }
+                Err(e) => self.status = format!("Error: {}", e),
+            }
+        }
+    }
+
+    async fn open_delete_confirm(&mut self) {
+        let (table, row_data, columns) = {
+            let tab = match self.current_tab() {
+                Some(t) => t,
+                None => return,
+            };
+            let table = match tab.tables.get(tab.table_index) {
+                Some(t) => t.clone(),
+                None => return,
+            };
+            let row = match tab.display_rows().get(tab.selected_row) {
+                Some(r) => r.clone(),
+                None => {
+                    self.status = "No row selected".into();
+                    return;
+                }
+            };
+            let cols = tab
+                .result
+                .as_ref()
+                .map(|r| r.columns.clone())
+                .unwrap_or_default();
+            (table, row, cols)
+        };
+        if let Some(tab) = self.tabs.get(self.active_tab) {
+            match tab.db.get_columns(&table).await {
+                Ok(col_info) => {
+                    let pk = match col_info.iter().find(|c| c.is_pk) {
+                        Some(pk) => pk,
+                        None => {
+                            self.status = "Delete requires a primary key".into();
+                            return;
+                        }
+                    };
+                    let pk_val = columns
+                        .iter()
+                        .position(|c| c == &pk.name)
+                        .and_then(|i| row_data.get(i))
+                        .cloned()
+                        .unwrap_or_default();
+                    let quote = tab.db.identifier_quote();
+                    let quote_ident = |ident: &str| {
+                        let doubled = format!("{quote}{quote}");
+                        format!("{quote}{}{quote}", ident.replace(quote, &doubled))
+                    };
+                    let sql = format!(
+                        "DELETE FROM {} WHERE {} = {}",
+                        quote_ident(&table),
+                        quote_ident(&pk.name),
+                        CrudForm::sql_value(&pk_val)
+                    );
+                    let preview = row_data
+                        .iter()
+                        .take(3)
+                        .map(|v| v.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    self.delete_confirm = Some(DeleteConfirm {
+                        description: format!("Row: {}...", preview),
+                        sql,
+                    });
+                    self.screen = Screen::ConfirmDelete;
+                }
+                Err(e) => self.status = format!("Error: {}", e),
+            }
+        }
+    }
+
+    async fn handle_crud_form(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Tab | KeyCode::Down => {
+                if let Some(ref mut form) = self.crud_form {
+                    form.next_field();
+                }
+            }
+            KeyCode::BackTab | KeyCode::Up => {
+                if let Some(ref mut form) = self.crud_form {
+                    form.prev_field();
+                }
+            }
+            KeyCode::Char(c) => {
+                if let Some(ref mut form) = self.crud_form {
+                    if let Some(value) = form.values.get_mut(form.active_field) {
+                        value.push(c);
+                    }
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(ref mut form) = self.crud_form {
+                    if let Some(value) = form.values.get_mut(form.active_field) {
+                        value.pop();
+                    }
+                }
+            }
+            KeyCode::Enter => {
+                let sql = self.crud_form.as_ref().map(|f| f.build_sql());
+                if let Some(sql) = sql {
+                    if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                        match tab.db.execute_write(&sql).await {
+                            Ok(rows) => {
+                                let mode = self.crud_form.as_ref().map(|f| f.mode.clone());
+                                let msg = match mode {
+                                    Some(CrudMode::Insert) => format!("{} row inserted", rows),
+                                    _ => format!("{} row updated", rows),
+                                };
+                                self.crud_form = None;
+                                self.screen = Screen::Main;
+                                self.load_table_data().await;
+                                self.status = msg;
+                            }
+                            Err(e) => {
+                                self.status = format!("Error: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+            KeyCode::Esc => {
+                self.crud_form = None;
+                self.screen = Screen::Main;
+                self.status = "Cancelled".into();
+            }
+            _ => {}
+        }
+    }
+
+    async fn handle_confirm_delete(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                let sql = self.delete_confirm.as_ref().map(|d| d.sql.clone());
+                if let Some(sql) = sql {
+                    if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                        match tab.db.execute_write(&sql).await {
+                            Ok(rows) => {
+                                let msg = format!("{} row deleted", rows);
+                                self.delete_confirm = None;
+                                self.screen = Screen::Main;
+                                self.load_table_data().await;
+                                self.status = msg;
+                            }
+                            Err(e) => {
+                                let msg = e.to_string();
+                                self.status = if msg.contains("FOREIGN KEY")
+                                    || msg.contains("foreign key")
+                                {
+                                    "Cannot delete: row is referenced by another table (foreign key constraint)".into()
+                                } else {
+                                    format!("Error: {}", msg)
+                                };
+                                self.delete_confirm = None;
+                                self.screen = Screen::Main;
+                            }
+                        }
+                    }
+                }
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.delete_confirm = None;
+                self.screen = Screen::Main;
+                self.status = "Cancelled".into();
+            }
+            _ => {}
+        }
+    }
+
     async fn load_table_data(&mut self) {
         let (table, offset, page_size) = {
             let tab = match self.current_tab() {
@@ -793,7 +1242,7 @@ impl App {
                     tab.search_query.clear();
                     tab.update_filter();
                     self.status = format!(
-                        "{}  |  {} rows  |  Tab:focus  j/k:scroll  h/l:cols  /:search  e:csv  ::sql  q:back",
+                        "{}  |  {} rows  |  Tab:focus  j/k:scroll  h/l:cols  i:insert  u:update  d:delete  /:search  e:csv  ::sql  q:back",
                         table, tab.total_rows
                     );
                 }
