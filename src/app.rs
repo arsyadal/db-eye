@@ -147,6 +147,7 @@ pub enum Screen {
     Search,
     CrudForm,
     ConfirmDelete,
+    Help,
 }
 
 #[derive(Clone, PartialEq)]
@@ -386,6 +387,8 @@ pub struct Tab {
     pub total_rows: i64,
     pub search_query: String,
     pub server_info: Option<(ConnectForm, DbTypeChoice)>,
+    pub query_history: Vec<String>,
+    pub history_index: Option<usize>,
 }
 
 impl Tab {
@@ -405,6 +408,8 @@ impl Tab {
             total_rows: 0,
             search_query: String::new(),
             server_info: None,
+            query_history: vec![],
+            history_index: None,
         }
     }
 
@@ -549,20 +554,6 @@ impl App {
         self.status = "READ-ONLY mode: write actions are disabled".into();
     }
 
-    fn is_read_only_sql(sql: &str) -> bool {
-        let sql = sql.trim_start();
-        if sql.is_empty() {
-            return true;
-        }
-        let sql = sql
-            .trim_start_matches(|c: char| c == '(' || c == ';' || c.is_whitespace())
-            .to_lowercase();
-        matches!(
-            sql.split_whitespace().next(),
-            Some("select" | "with" | "show" | "describe" | "desc" | "explain")
-        )
-    }
-
     pub async fn run<B: Backend>(
         &mut self,
         terminal: &mut Terminal<B>,
@@ -588,11 +579,21 @@ impl App {
                         Screen::Search => self.handle_search(key.code),
                         Screen::CrudForm => self.handle_crud_form(key.code).await,
                         Screen::ConfirmDelete => self.handle_confirm_delete(key.code).await,
+                        Screen::Help => self.handle_help(key.code),
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    fn handle_help(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => {
+                self.screen = Screen::Main;
+            }
+            _ => {}
+        }
     }
 
     async fn handle_schemas(&mut self, key: KeyCode) {
@@ -898,6 +899,10 @@ impl App {
 
         // Tab switching with [ and ] (Mac-friendly, no Ctrl+arrow)
         match key {
+            KeyCode::Char('?') => {
+                self.screen = Screen::Help;
+                return;
+            }
             KeyCode::Char('[') => {
                 if self.active_tab > 0 {
                     self.active_tab -= 1;
@@ -1120,29 +1125,80 @@ impl App {
 
     async fn handle_query(&mut self, key: KeyCode) {
         match key {
-            KeyCode::Char(c) => self.query_input.push(c),
+            KeyCode::Up => {
+                if let Some(tab) = self.current_tab_mut() {
+                    if !tab.query_history.is_empty() {
+                        let new_index = match tab.history_index {
+                            Some(idx) => if idx > 0 { idx - 1 } else { 0 },
+                            None => tab.query_history.len().saturating_sub(1),
+                        };
+                        tab.history_index = Some(new_index);
+                        if let Some(history_sql) = tab.query_history.get(new_index) {
+                            self.query_input = history_sql.clone();
+                        }
+                    }
+                }
+            }
+            KeyCode::Down => {
+                if let Some(tab) = self.current_tab_mut() {
+                    if let Some(idx) = tab.history_index {
+                        if idx + 1 < tab.query_history.len() {
+                            let new_index = idx + 1;
+                            tab.history_index = Some(new_index);
+                            self.query_input = tab.query_history[new_index].clone();
+                        } else {
+                            tab.history_index = None;
+                            self.query_input.clear();
+                        }
+                    }
+                }
+            }
+            KeyCode::Char(c) => {
+                self.query_input.push(c);
+                if let Some(tab) = self.current_tab_mut() {
+                    tab.history_index = None;
+                }
+            }
             KeyCode::Backspace => {
                 self.query_input.pop();
+                if let Some(tab) = self.current_tab_mut() {
+                    tab.history_index = None;
+                }
             }
             KeyCode::Enter => {
                 let sql = self.query_input.trim().to_string();
-                if self.read_only && !Self::is_read_only_sql(&sql) {
+                if sql.is_empty() {
+                    self.screen = Screen::Main;
+                    return;
+                }
+                if self.read_only && !DbClient::is_read_only_sql(&sql) {
                     self.screen = Screen::Main;
                     self.read_only_block();
                     return;
                 }
                 if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                    // Save to history if different from last entry
+                    if tab.query_history.last() != Some(&sql) {
+                        tab.query_history.push(sql.clone());
+                    }
+                    tab.history_index = None;
+
                     match tab.db.execute_query(&sql).await {
                         Ok(result) => {
                             let count = result.rows.len();
                             tab.total_rows = count as i64;
+                            let msg = if count > 0 {
+                                format!("{} rows returned", count)
+                            } else {
+                                format!("{} rows affected", result.rows_affected)
+                            };
                             tab.result = Some(result);
                             tab.search_query.clear();
                             tab.update_filter();
                             tab.selected_row = 0;
                             tab.row_offset = 0;
                             tab.col_offset = 0;
-                            self.status = format!("{} rows returned", count);
+                            self.status = msg;
                         }
                         Err(e) => {
                             self.status = format_db_error("Query", &e);
@@ -1152,6 +1208,9 @@ impl App {
                 self.screen = Screen::Main;
             }
             KeyCode::Esc => {
+                if let Some(tab) = self.current_tab_mut() {
+                    tab.history_index = None;
+                }
                 self.screen = Screen::Main;
             }
             _ => {}
@@ -1693,20 +1752,20 @@ mod tests {
 
     #[test]
     fn read_only_sql_allows_selects_and_explain() {
-        assert!(App::is_read_only_sql("select * from users"));
-        assert!(App::is_read_only_sql(
+        assert!(DbClient::is_read_only_sql("select * from users"));
+        assert!(DbClient::is_read_only_sql(
             "WITH recent AS (SELECT 1) SELECT * FROM recent"
         ));
-        assert!(App::is_read_only_sql("EXPLAIN SELECT * FROM users"));
-        assert!(App::is_read_only_sql("SHOW TABLES"));
+        assert!(DbClient::is_read_only_sql("EXPLAIN SELECT * FROM users"));
+        assert!(DbClient::is_read_only_sql("SHOW TABLES"));
     }
 
     #[test]
     fn read_only_sql_blocks_writes() {
-        assert!(!App::is_read_only_sql("insert into users values (1)"));
-        assert!(!App::is_read_only_sql("UPDATE users SET name = 'Ada'"));
-        assert!(!App::is_read_only_sql("delete from users"));
-        assert!(!App::is_read_only_sql("drop table users"));
+        assert!(!DbClient::is_read_only_sql("insert into users values (1)"));
+        assert!(!DbClient::is_read_only_sql("UPDATE users SET name = 'Ada'"));
+        assert!(!DbClient::is_read_only_sql("delete from users"));
+        assert!(!DbClient::is_read_only_sql("drop table users"));
     }
 
     #[tokio::test]

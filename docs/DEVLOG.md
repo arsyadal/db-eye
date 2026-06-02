@@ -12,12 +12,18 @@ Catatan perkembangan DB-Eye. Update file ini setiap ada perubahan besar agar kon
   - Navigasi bolak-balik antara Main screen, Schemas, dan Databases screen.
   - Dukungan schema-qualified table names pada CRUD (Insert/Update/Delete).
   - Tampilan indikator active schema pada title panel tables.
+- Menambahkan Help screen popup via `?` untuk membantu user mempelajari keybindings.
+- Menambahkan laporan "rows affected" untuk custom write queries.
+- Menambahkan in-memory query history per tab dengan navigasi `Up/Down`.
 
 ### Catatan Teknis
 
 - Method `DbClient` (`list_tables`, `query_table`, `get_columns`, `count_rows`, `get_fk_values`) sekarang menerima parameter `schema` (Option<&str>).
 - `CrudForm` menyisipkan schema-qualified identifier pada SQL generation untuk PostgreSQL.
 - Borrow checker issue di `handle_schemas` diselesaikan dengan memisahkan state update dan borrow tab.
+- `DbClient::execute_query` sekarang menggunakan `fetch_many` (via stream) untuk mendapatkan rows sekaligus metadata (rows affected).
+- Menambahkan dependensi `futures` untuk mendukung pengolahan stream hasil query.
+- Pindah logika `is_read_only_sql` ke `src/db.rs` sebagai utility database level.
 - Tests diperbarui agar sesuai dengan signature method baru yang schema-aware.
 
 ### Validasi

@@ -1,4 +1,5 @@
 use sqlx::{AnyPool, Column, Row, any::AnyRow, error::ErrorKind};
+use futures::StreamExt;
 
 #[derive(Clone, PartialEq)]
 pub enum DbType {
@@ -225,6 +226,7 @@ impl DbClient {
             return Ok(QueryResult {
                 columns: vec![],
                 rows: vec![],
+                rows_affected: 0,
             });
         }
         let columns: Vec<String> = col_rows.iter().map(|r| row_cell(r, 0)).collect();
@@ -246,62 +248,89 @@ impl DbClient {
         Ok(QueryResult {
             columns,
             rows: data,
+            rows_affected: 0,
         })
     }
 
     pub async fn execute_query(&self, sql: &str) -> Result<QueryResult, sqlx::Error> {
-        if self.db_type == DbType::Postgres {
-            let rows = sqlx::query(sql).fetch_all(&self.pool).await?;
-            if rows.is_empty() {
-                return Ok(QueryResult {
-                    columns: vec![],
-                    rows: vec![],
-                });
+        let mut rows = Vec::new();
+        let mut rows_affected = 0;
+        let mut results = sqlx::query(sql).fetch_many(&self.pool);
+
+        while let Some(res) = results.next().await {
+            match res? {
+                sqlx::Either::Left(query_result) => {
+                    rows_affected += query_result.rows_affected();
+                }
+                sqlx::Either::Right(row) => {
+                    rows.push(row);
+                }
             }
-            let columns: Vec<String> = rows[0]
-                .columns()
-                .iter()
-                .map(|c| c.name().to_string())
-                .collect();
+        }
+
+        if rows.is_empty() {
+            return Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected,
+            });
+        }
+
+        let columns: Vec<String> = rows[0]
+            .columns()
+            .iter()
+            .map(|c| c.name().to_string())
+            .collect();
+
+        if self.db_type == DbType::Postgres {
             // Try native decode; fall back to text-cast subquery on type error
             if row_to_strings_checked(&rows[0]).is_ok() {
                 let data = rows.iter().map(|r| row_to_strings(r)).collect();
                 return Ok(QueryResult {
                     columns,
                     rows: data,
+                    rows_affected,
                 });
             }
-            let select = columns
-                .iter()
-                .map(|c| format!("{}::text", self.quote_ident(c)))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let cast_sql = format!("SELECT {} FROM ({}) __db_eye_q", select, sql);
-            let rows2 = sqlx::query(&cast_sql).fetch_all(&self.pool).await?;
-            let data = rows2.iter().map(|r| row_to_strings(r)).collect();
-            return Ok(QueryResult {
-                columns,
-                rows: data,
-            });
+
+            // Only retry with casts if it's a read-only query to avoid double-mutations
+            if Self::is_read_only_sql(sql) {
+                let select = columns
+                    .iter()
+                    .map(|c| format!("{}::text", self.quote_ident(c)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let cast_sql = format!("SELECT {} FROM ({}) __db_eye_q", select, sql);
+                let rows2 = sqlx::query(&cast_sql).fetch_all(&self.pool).await?;
+                let data = rows2.iter().map(|r| row_to_strings(r)).collect();
+                return Ok(QueryResult {
+                    columns,
+                    rows: data,
+                    rows_affected,
+                });
+            }
         }
 
-        let rows = sqlx::query(sql).fetch_all(&self.pool).await?;
-        if rows.is_empty() {
-            return Ok(QueryResult {
-                columns: vec![],
-                rows: vec![],
-            });
-        }
-        let columns: Vec<String> = rows[0]
-            .columns()
-            .iter()
-            .map(|c| c.name().to_string())
-            .collect();
         let data = rows.iter().map(|r| row_to_strings(r)).collect();
         Ok(QueryResult {
             columns,
             rows: data,
+            rows_affected,
         })
+    }
+
+    pub fn is_read_only_sql(sql: &str) -> bool {
+        let sql = sql.trim_start();
+        if sql.is_empty() {
+            return true;
+        }
+        let sql = sql
+            .trim_start_matches(|c: char| c == '(' || c == ';' || c.is_whitespace())
+            .to_lowercase();
+        matches!(
+            sql.split_whitespace().next(),
+            Some("select" | "with" | "show" | "describe" | "desc" | "explain")
+        )
     }
 
     pub async fn get_columns(
@@ -522,6 +551,7 @@ impl DbClient {
 pub struct QueryResult {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
+    pub rows_affected: u64,
 }
 
 #[derive(Clone)]

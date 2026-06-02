@@ -15,3 +15,4 @@ crossterm = "0.29.0"
 ratatui = "0.30.0"
 sqlx = { version = "0.8.6", features = ["sqlite", "postgres", "mysql", "runtime-tokio", "any"] }
 tokio = { version = "1.52.1", features = ["full"] }
+futures = "0.3"

@@ -8,6 +8,9 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
 
 ### Added
 
+- Help screen popup via `?` key displaying categorized keybindings.
+- "Rows affected" reporting for custom write queries (INSERT, UPDATE, DELETE).
+- In-memory query history per tab with `Up/Down` navigation in SQL query popup.
 - PostgreSQL schema support:
   - Schema selection screen flow setelah pilih database.
   - Dukungan untuk schema non-public pada data browsing, CRUD, dan metadata.

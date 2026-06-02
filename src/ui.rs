@@ -26,6 +26,10 @@ pub fn draw(f: &mut Frame, app: &App) {
             draw_main(f, app);
             draw_confirm_delete(f, app);
         }
+        Screen::Help => {
+            draw_main(f, app);
+            draw_help_popup(f);
+        }
     }
 }
 
@@ -759,4 +763,47 @@ fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(vert[1])[1]
+}
+
+fn draw_help_popup(f: &mut Frame) {
+    let area = centered_rect(80, 20, f.area());
+    f.render_widget(Clear, area);
+
+    let help_text = vec![
+        Line::from(vec![
+            Span::styled(" DB-EYE Keybindings ", Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(" General ", Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))),
+        Line::from(" Ctrl+C      Quit application"),
+        Line::from(" ?          Show/hide this help screen"),
+        Line::from(" Esc        Go back / Cancel"),
+        Line::from(""),
+        Line::from(Span::styled(" Connection & Navigation ", Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))),
+        Line::from(" Ctrl+T      New connection (Connect screen)"),
+        Line::from(" Ctrl+W      Close current tab"),
+        Line::from(" [ / ]       Switch between tabs"),
+        Line::from(" Tab        Switch focus (Tables list / Data panel)"),
+        Line::from(" j / k      Navigate lists (Tables, Databases, Schemas)"),
+        Line::from(" Enter      Select / Open item"),
+        Line::from(""),
+        Line::from(Span::styled(" Data Panel ", Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))),
+        Line::from(" j / k      Scroll rows up/down"),
+        Line::from(" h / l      Scroll columns left/right"),
+        Line::from(" :          Custom SQL query"),
+        Line::from(" /          Search / Filter rows"),
+        Line::from(" i / u / d  Insert / Update / Delete row"),
+        Line::from(" e          Export current view to CSV"),
+        Line::from(""),
+        Line::from(Span::styled(" Form / Dialogs ", Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))),
+        Line::from(" Tab        Next field"),
+        Line::from(" Enter      Confirm / Save"),
+        Line::from(" y / n      Confirm Delete (Yes/No)"),
+    ];
+
+    let help_para = Paragraph::new(help_text)
+        .block(Block::default().borders(Borders::ALL).title(" Help "))
+        .wrap(ratatui::widgets::Wrap { trim: false });
+
+    f.render_widget(help_para, area);
 }
