@@ -75,12 +75,13 @@ db-eye
 |-----|--------|
 | `j` / `k` | Scroll rows (auto-pagination) |
 | `h` / `l` | Scroll columns left / right |
+| `Enter` / `e` | **Inline Cell Edit** (starts editing selected cell) |
 | `/` | Search / filter rows (real-time) |
 | `:` | Enter SQL query (supports history with `↑`/`↓`) |
 | `i` | Insert row (disabled in read-only mode) |
-| `u` | Update selected row (requires PK) |
+| `u` | Update selected row (full form) |
 | `d` | Delete selected row (requires PK + confirmation) |
-| `e` | Export visible data to CSV |
+| `v` | Export visible data to CSV (mnemonic: view/export) |
 | `Tab` | Switch focus to tables panel |
 | `q` / `Esc` | Back to tables panel |
 

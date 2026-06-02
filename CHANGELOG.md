@@ -8,6 +8,10 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
 
 ### Added
 
+- Inline Cell Editing:
+  - Edit cell langsung di panel data via `Enter` atau `e`.
+  - Simpan perubahan ke database via parameterized `UPDATE`.
+  - Visual feedback warna kuning pada cell yang sedang diedit.
 - Saved Connections:
   - Simpan konfigurasi koneksi (host, user, dsb) via `Ctrl+S`.
   - Pilih dari daftar koneksi tersimpan pada screen Connect via `Tab`.

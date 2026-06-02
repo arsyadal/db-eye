@@ -491,18 +491,32 @@ fn draw_data_panel(f: &mut Frame, app: &App, area: Rect) {
         .map(|(i, row)| {
             let cells: Vec<Cell> = row
                 .iter()
+                .enumerate()
                 .skip(col_offset)
                 .take(visible)
-                .map(|v| Cell::from(v.as_str()))
+                .map(|(j, v)| {
+                    let mut style = Style::default();
+                    let mut display_val = v.clone();
+
+                    if i == tab.selected_row && j == tab.col_offset && focused {
+                        if let Some((edit_r, edit_c)) = tab.editing_cell {
+                            if i == edit_r && j == edit_c {
+                                style = style.bg(Color::Yellow).fg(Color::Black);
+                                display_val = tab.edit_buffer.clone();
+                            } else {
+                                style = style.add_modifier(Modifier::REVERSED);
+                            }
+                        } else {
+                            style = style.add_modifier(Modifier::REVERSED);
+                        }
+                    } else if i == tab.selected_row {
+                        style = style.add_modifier(Modifier::BOLD);
+                    }
+
+                    Cell::from(display_val).style(style)
+                })
                 .collect();
-            let style = if i == tab.selected_row && focused {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else if i == tab.selected_row {
-                Style::default().add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
-            Row::new(cells).style(style)
+            Row::new(cells)
         })
         .collect();
 
@@ -518,7 +532,7 @@ fn draw_data_panel(f: &mut Frame, app: &App, area: Rect) {
             " row {}/{} col {} ",
             tab.row_offset + tab.selected_row + 1,
             tab.total_rows,
-            col_offset
+            col_offset + 1
         )
     };
 
@@ -526,15 +540,41 @@ fn draw_data_panel(f: &mut Frame, app: &App, area: Rect) {
     state.select(Some(tab.selected_row));
 
     f.render_stateful_widget(
-        Table::new(rows, constraints).header(header).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(border_style),
-        ),
+        Table::new(rows, constraints.clone())
+            .header(header)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(title)
+                    .border_style(border_style),
+            )
+            .column_spacing(2),
         area,
         &mut state,
     );
+
+    // Cursor for inline edit
+    if let Some((edit_r, edit_c)) = tab.editing_cell {
+        if focused && edit_c >= col_offset && edit_c < col_offset + visible {
+            let mut x_offset: u16 = 1; // Left border
+            for (i, constraint) in constraints.iter().enumerate() {
+                if col_offset + i == edit_c {
+                    break;
+                }
+                match constraint {
+                    Constraint::Length(l) => x_offset += *l + 2, // +2 for column_spacing
+                    _ => x_offset += 20,
+                }
+            }
+
+            // Stateful Table positioning is complex to calculate exactly, 
+            // but for simple cases where current row is visible:
+            let y = area.y + 3 + edit_r.saturating_sub(state.offset()) as u16;
+            if y < area.y + area.height - 1 && x_offset + (tab.edit_buffer.len() as u16) < area.x + area.width - 1 {
+                f.set_cursor_position((area.x + x_offset + tab.edit_buffer.len() as u16, y));
+            }
+        }
+    }
 }
 
 fn auto_col_widths(
@@ -833,10 +873,11 @@ fn draw_help_popup(f: &mut Frame) {
         Line::from(Span::styled(" Data Panel ", Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))),
         Line::from(" j / k      Scroll rows up/down"),
         Line::from(" h / l      Scroll columns left/right"),
+        Line::from(" Enter / e  Inline cell edit (Confirm with Enter)"),
         Line::from(" :          Custom SQL query"),
         Line::from(" /          Search / Filter rows"),
         Line::from(" i / u / d  Insert / Update / Delete row"),
-        Line::from(" e          Export current view to CSV"),
+        Line::from(" v          Export current view to CSV"),
         Line::from(""),
         Line::from(Span::styled(" Form / Dialogs ", Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))),
         Line::from(" Tab        Next field"),

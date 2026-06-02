@@ -20,6 +20,11 @@ Catatan perkembangan DB-Eye. Update file ini setiap ada perubahan besar agar kon
   - Dukungan untuk menyimpan SQLite path dan Server connection form.
   - Alur UI untuk switch focus (`Tab`) antara input form dan daftar saved connections.
   - Shortcut `Ctrl+S` untuk save dan `Delete` untuk hapus.
+- Menambahkan Inline Cell Editing:
+  - Memungkinkan edit data langsung dari panel tabel tanpa membuka form.
+  - Menggunakan `editing_cell` dan `edit_buffer` pada state `Tab`.
+  - Menghasilkan query `UPDATE` spesifik untuk cell tersebut (memerlukan Primary Key).
+  - Feedback visual (warna kuning) dan sinkronisasi data lokal setelah sukses.
 
 ### Catatan Teknis
 

@@ -394,6 +394,8 @@ pub struct Tab {
     pub server_info: Option<(ConnectForm, DbTypeChoice)>,
     pub query_history: Vec<String>,
     pub history_index: Option<usize>,
+    pub editing_cell: Option<(usize, usize)>, // (row, col)
+    pub edit_buffer: String,
 }
 
 impl Tab {
@@ -415,6 +417,8 @@ impl Tab {
             server_info: None,
             query_history: vec![],
             history_index: None,
+            editing_cell: None,
+            edit_buffer: String::new(),
         }
     }
 
@@ -1142,6 +1146,37 @@ impl App {
     }
 
     async fn handle_data_focus(&mut self, key: KeyCode) {
+        let editing = if let Some(tab) = self.current_tab() {
+            tab.editing_cell.is_some()
+        } else {
+            false
+        };
+
+        if editing {
+            match key {
+                KeyCode::Enter => {
+                    self.save_inline_edit().await;
+                }
+                KeyCode::Esc => {
+                    if let Some(tab) = self.current_tab_mut() {
+                        tab.editing_cell = None;
+                    }
+                }
+                KeyCode::Char(c) => {
+                    if let Some(tab) = self.current_tab_mut() {
+                        tab.edit_buffer.push(c);
+                    }
+                }
+                KeyCode::Backspace => {
+                    if let Some(tab) = self.current_tab_mut() {
+                        tab.edit_buffer.pop();
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
+
         match key {
             KeyCode::Char('j') | KeyCode::Down => {
                 let page_size = self.page_size;
@@ -1197,6 +1232,29 @@ impl App {
                     }
                 }
             }
+            KeyCode::Enter | KeyCode::Char('e') => {
+                if self.read_only {
+                    self.read_only_block();
+                    return;
+                }
+                let cell_data = if let Some(tab) = self.current_tab() {
+                    let row = tab.selected_row;
+                    let col = tab.col_offset;
+                    tab.display_rows()
+                        .get(row)
+                        .and_then(|r| r.get(col))
+                        .map(|v| (row, col, v.clone()))
+                } else {
+                    None
+                };
+
+                if let Some((row, col, val)) = cell_data {
+                    if let Some(tab) = self.current_tab_mut() {
+                        tab.editing_cell = Some((row, col));
+                        tab.edit_buffer = val;
+                    }
+                }
+            }
             KeyCode::Char(':') => {
                 self.query_input.clear();
                 self.screen = Screen::Query;
@@ -1208,7 +1266,7 @@ impl App {
                     .unwrap_or_default();
                 self.screen = Screen::Search;
             }
-            KeyCode::Char('e') => {
+            KeyCode::Char('v') => {
                 if let Some(tab) = self.current_tab() {
                     match tab.export_csv() {
                         Ok(f) => self.status = format!("Exported → {}", f),
@@ -1369,6 +1427,119 @@ impl App {
         if let Some(tab) = self.current_tab_mut() {
             tab.search_query = q;
             tab.update_filter();
+        }
+    }
+
+    async fn save_inline_edit(&mut self) {
+        let (table, schema, col_idx, new_val, row_data, columns) = {
+            let tab = match self.current_tab() {
+                Some(t) => t,
+                None => return,
+            };
+            let (row_idx, col_idx) = match tab.editing_cell {
+                Some(c) => c,
+                None => return,
+            };
+            let table = match tab.tables.get(tab.table_index) {
+                Some(t) => t.clone(),
+                None => return,
+            };
+            let row = match tab.display_rows().get(row_idx) {
+                Some(r) => r.clone(),
+                None => return,
+            };
+            let cols = tab.result.as_ref().map(|r| r.columns.clone()).unwrap_or_default();
+            (table, tab.current_schema().map(|s| s.to_string()), col_idx, tab.edit_buffer.clone(), row, cols)
+        };
+
+        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            match tab.db.get_columns(schema.as_deref(), &table).await {
+                Ok(col_info) => {
+                    let col_name = match columns.get(col_idx) {
+                        Some(c) => c,
+                        None => return,
+                    };
+                    let mut pk_columns: Vec<ColumnInfo> = col_info.iter().filter(|c| c.is_pk).cloned().collect();
+                    if pk_columns.is_empty() {
+                        self.status = "Update requires a primary key".into();
+                        tab.editing_cell = None;
+                        return;
+                    }
+                    pk_columns.sort_by_key(|c| c.pk_order);
+
+                    let quote = tab.db.identifier_quote();
+                    let quote_ident = |ident: &str| {
+                        let doubled = format!("{quote}{quote}");
+                        format!("{quote}{}{quote}", ident.replace(quote, &doubled))
+                    };
+                    let numbered_placeholders = tab.db.uses_numbered_placeholders();
+
+                    let mut values = vec![CrudForm::form_value(&new_val)];
+                    let mut conditions = Vec::new();
+
+                    for (i, pk) in pk_columns.iter().enumerate() {
+                        let pk_val = columns
+                            .iter()
+                            .position(|c| c == &pk.name)
+                            .and_then(|idx| row_data.get(idx))
+                            .cloned()
+                            .unwrap_or_default();
+                        values.push(CrudForm::form_value(&pk_val));
+                        let placeholder = if numbered_placeholders {
+                            format!("${}", i + 2)
+                        } else {
+                            "?".to_string()
+                        };
+                        conditions.push(format!("{} = {}", quote_ident(&pk.name), placeholder));
+                    }
+
+                    let table_ident = if let Some(s) = &schema {
+                        format!("{}.{}", quote_ident(s), quote_ident(&table))
+                    } else {
+                        quote_ident(&table)
+                    };
+                    let sql = format!(
+                        "UPDATE {} SET {} = {} WHERE {}",
+                        table_ident,
+                        quote_ident(col_name),
+                        if numbered_placeholders { "$1".to_string() } else { "?".to_string() },
+                        conditions.join(" AND ")
+                    );
+
+                    match tab.db.execute_write_with_values(&sql, &values).await {
+                        Ok(_) => {
+                            if let Some(res) = tab.result.as_mut() {
+                                // Find actual row in result by primary key (since display_rows might be filtered)
+                                let row_pk_values: Vec<String> = pk_columns.iter().map(|pk| {
+                                    columns.iter().position(|c| c == &pk.name).and_then(|idx| row_data.get(idx)).cloned().unwrap_or_default()
+                                }).collect();
+
+                                if let Some(target_row) = res.rows.iter_mut().find(|r| {
+                                    pk_columns.iter().all(|pk| {
+                                        let idx = res.columns.iter().position(|c| c == &pk.name).unwrap_or(0);
+                                        r.get(idx) == row_pk_values.get(pk_columns.iter().position(|p| p.name == pk.name).unwrap_or(0))
+                                    })
+                                }) {
+                                    if let Some(cell) = target_row.get_mut(col_idx) {
+                                        *cell = new_val;
+                                    }
+                                }
+                            }
+                            tab.update_filter();
+                            tab.editing_cell = None;
+                            self.status = "Cell updated".into();
+                        }
+                        Err(e) => {
+                            self.status = format_db_error("Inline update", &e);
+                            tab.editing_cell = None;
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.status = format_db_error("Loading columns", &e);
+                    tab.editing_cell = None;
+                }
+            }
         }
     }
 
