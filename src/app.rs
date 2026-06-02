@@ -2,9 +2,10 @@ use crate::db::{ColumnInfo, DbClient, QueryResult, format_db_error};
 use crate::ui;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};
-use std::{fs, time::Duration};
+use serde::{Deserialize, Serialize};
+use std::{fs, path::PathBuf, time::Duration};
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum DbTypeChoice {
     Sqlite,
     Postgres,
@@ -52,12 +53,14 @@ impl DbTypeChoice {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct ConnectForm {
     pub host: String,
     pub port: String,
     pub user: String,
+    #[serde(skip)] // Don't save passwords in plain text config
     pub pass: String,
+    #[serde(skip)]
     pub active: usize,
 }
 
@@ -133,9 +136,11 @@ pub struct ServerConn {
     pub db_index: usize,
 }
 
+#[derive(Clone, Copy, PartialEq)]
 pub enum Focus {
     Tables,
     Data,
+    Saved,
 }
 
 pub enum Screen {
@@ -474,6 +479,14 @@ impl Tab {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SavedConnection {
+    pub name: String,
+    pub db_type: DbTypeChoice,
+    pub form: ConnectForm,
+    pub sqlite_path: Option<String>,
+}
+
 pub struct App {
     pub screen: Screen,
     pub focus: Focus,
@@ -490,6 +503,8 @@ pub struct App {
     pub read_only: bool,
     pub crud_form: Option<CrudForm>,
     pub delete_confirm: Option<DeleteConfirm>,
+    pub saved_connections: Vec<SavedConnection>,
+    pub saved_index: usize,
 }
 
 impl App {
@@ -499,7 +514,7 @@ impl App {
         } else {
             "←/→: switch DB type  Enter: connect  Ctrl+C: quit"
         };
-        Self {
+        let mut app = Self {
             screen: Screen::Connect,
             focus: Focus::Tables,
             tabs: vec![],
@@ -515,7 +530,60 @@ impl App {
             read_only,
             crud_form: None,
             delete_confirm: None,
+            saved_connections: vec![],
+            saved_index: 0,
+        };
+        app.load_saved_connections();
+        app
+    }
+
+    fn config_path() -> Option<PathBuf> {
+        #[cfg(target_os = "windows")]
+        let base = std::env::var("APPDATA").ok().map(PathBuf::from);
+        #[cfg(not(target_os = "windows"))]
+        let base = std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".config"));
+
+        base.map(|b| b.join("db-eye").join("connections.json"))
+    }
+
+    fn load_saved_connections(&mut self) {
+        if let Some(path) = Self::config_path() {
+            if let Ok(content) = fs::read_to_string(path) {
+                if let Ok(saved) = serde_json::from_str::<Vec<SavedConnection>>(&content) {
+                    self.saved_connections = saved;
+                }
+            }
         }
+    }
+
+    fn save_saved_connections(&self) {
+        if let Some(path) = Self::config_path() {
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            if let Ok(json) = serde_json::to_string_pretty(&self.saved_connections) {
+                let _ = fs::write(path, json);
+            }
+        }
+    }
+
+    fn add_saved_connection(&mut self, name: String) {
+        let conn = match self.db_type {
+            DbTypeChoice::Sqlite => SavedConnection {
+                name,
+                db_type: self.db_type.clone(),
+                form: ConnectForm::default(),
+                sqlite_path: Some(self.sqlite_input.clone()),
+            },
+            _ => SavedConnection {
+                name,
+                db_type: self.db_type.clone(),
+                form: self.connect_form.clone(),
+                sqlite_path: None,
+            },
+        };
+        self.saved_connections.push(conn);
+        self.save_saved_connections();
     }
 
     pub fn current_tab(&self) -> Option<&Tab> {
@@ -571,7 +639,7 @@ impl App {
                         break;
                     }
                     match self.screen {
-                        Screen::Connect => self.handle_connect(key.code).await,
+                        Screen::Connect => self.handle_connect(key.code, key.modifiers).await,
                         Screen::Databases => self.handle_databases(key.code).await,
                         Screen::Schemas => self.handle_schemas(key.code).await,
                         Screen::Main => self.handle_main(key.code, key.modifiers).await,
@@ -789,53 +857,113 @@ impl App {
         }
     }
 
-    async fn handle_connect(&mut self, key: KeyCode) {
+    async fn handle_connect(&mut self, key: KeyCode, modifiers: KeyModifiers) {
+        if modifiers.contains(KeyModifiers::CONTROL) && key == KeyCode::Char('s') {
+            let name = if self.db_type == DbTypeChoice::Sqlite {
+                self.sqlite_input.split('/').last().unwrap_or("SQLite").to_string()
+            } else {
+                format!("{}@{}", self.connect_form.user, self.connect_form.host)
+            };
+            self.add_saved_connection(name);
+            self.status = "Connection saved".into();
+            return;
+        }
+
         match key {
             KeyCode::Left => {
-                self.db_type = self.db_type.prev();
-                self.connect_form = ConnectForm::new(&self.db_type);
-                self.status = self.connect_help().into();
+                if self.focus != Focus::Saved {
+                    self.db_type = self.db_type.prev();
+                    self.connect_form = ConnectForm::new(&self.db_type);
+                    self.status = self.connect_help().into();
+                }
             }
             KeyCode::Right => {
-                self.db_type = self.db_type.next();
-                self.connect_form = ConnectForm::new(&self.db_type);
-                self.status = self.connect_help().into();
+                if self.focus != Focus::Saved {
+                    self.db_type = self.db_type.next();
+                    self.connect_form = ConnectForm::new(&self.db_type);
+                    self.status = self.connect_help().into();
+                }
             }
-            KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => {
-                if self.db_type != DbTypeChoice::Sqlite {
+            KeyCode::Tab => {
+                if self.focus == Focus::Saved {
+                    self.focus = Focus::Tables; // reuse Tables as "Inputs" focus
+                } else {
+                    self.focus = Focus::Saved;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if self.focus == Focus::Saved {
+                    if !self.saved_connections.is_empty() {
+                        self.saved_index = (self.saved_index + 1) % self.saved_connections.len();
+                    }
+                } else if self.db_type != DbTypeChoice::Sqlite {
                     self.connect_form.next_field();
                 }
             }
-            KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => {
-                if self.db_type != DbTypeChoice::Sqlite {
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.focus == Focus::Saved {
+                    if !self.saved_connections.is_empty() {
+                        self.saved_index = self.saved_index.checked_sub(1).unwrap_or(self.saved_connections.len().saturating_sub(1));
+                    }
+                } else if self.db_type != DbTypeChoice::Sqlite {
                     self.connect_form.prev_field();
                 }
             }
-            KeyCode::Char(c) => match self.db_type {
-                DbTypeChoice::Sqlite => self.sqlite_input.push(c),
-                _ => {
-                    self.connect_form.active_value_mut().push(c);
+            KeyCode::Delete => {
+                if self.focus == Focus::Saved && !self.saved_connections.is_empty() {
+                    self.saved_connections.remove(self.saved_index);
+                    self.saved_index = self.saved_index.min(self.saved_connections.len().saturating_sub(1));
+                    self.save_saved_connections();
                 }
-            },
-            KeyCode::Backspace => match self.db_type {
-                DbTypeChoice::Sqlite => {
-                    self.sqlite_input.pop();
-                }
-                _ => {
-                    self.connect_form.active_value_mut().pop();
-                }
-            },
-            KeyCode::Enter => match self.db_type {
-                DbTypeChoice::Sqlite => {
-                    let path = self.sqlite_input.trim().to_string();
-                    if !path.is_empty() {
-                        self.connect_sqlite(path).await;
+            }
+            KeyCode::Char(c) => {
+                if self.focus != Focus::Saved {
+                    match self.db_type {
+                        DbTypeChoice::Sqlite => self.sqlite_input.push(c),
+                        _ => {
+                            self.connect_form.active_value_mut().push(c);
+                        }
                     }
                 }
-                _ => {
-                    self.connect_to_server().await;
+            }
+            KeyCode::Backspace => {
+                if self.focus != Focus::Saved {
+                    match self.db_type {
+                        DbTypeChoice::Sqlite => {
+                            self.sqlite_input.pop();
+                        }
+                        _ => {
+                            self.connect_form.active_value_mut().pop();
+                        }
+                    }
                 }
-            },
+            }
+            KeyCode::Enter => {
+                if self.focus == Focus::Saved && !self.saved_connections.is_empty() {
+                    let saved = &self.saved_connections[self.saved_index];
+                    self.db_type = saved.db_type.clone();
+                    if self.db_type == DbTypeChoice::Sqlite {
+                        self.sqlite_input = saved.sqlite_path.clone().unwrap_or_default();
+                    } else {
+                        self.connect_form = saved.form.clone();
+                        self.connect_form.active = 3; // Focus Password
+                    }
+                    self.focus = Focus::Tables;
+                    self.status = "Connection loaded. Enter password if needed.".into();
+                } else {
+                    match self.db_type {
+                        DbTypeChoice::Sqlite => {
+                            let path = self.sqlite_input.trim().to_string();
+                            if !path.is_empty() {
+                                self.connect_sqlite(path).await;
+                            }
+                        }
+                        _ => {
+                            self.connect_to_server().await;
+                        }
+                    }
+                }
+            }
             KeyCode::Esc => {
                 if !self.tabs.is_empty() {
                     self.screen = Screen::Main;
@@ -929,11 +1057,13 @@ impl App {
                         self.status = self.table_help().into();
                         Focus::Tables
                     }
+                    Focus::Saved => Focus::Tables,
                 };
             }
             _ => match self.focus {
                 Focus::Tables => self.handle_tables_focus(key).await,
                 Focus::Data => self.handle_data_focus(key).await,
+                Focus::Saved => {}
             },
         }
     }

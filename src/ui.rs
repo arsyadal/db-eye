@@ -36,10 +36,50 @@ pub fn draw(f: &mut Frame, app: &App) {
 // ── Connect screen ────────────────────────────────────────────────────────────
 
 fn draw_connect(f: &mut Frame, app: &App) {
+    let horiz = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(30)])
+        .split(f.area());
+
     match app.db_type {
-        DbTypeChoice::Sqlite => draw_connect_sqlite(f, app),
-        _ => draw_connect_server(f, app),
+        DbTypeChoice::Sqlite => draw_connect_sqlite(f, app, horiz[0]),
+        _ => draw_connect_server(f, app, horiz[0]),
     }
+    draw_saved_connections(f, app, horiz[1]);
+}
+
+fn draw_saved_connections(f: &mut Frame, app: &App, area: Rect) {
+    let focused = matches!(app.focus, Focus::Saved);
+    let border_style = if focused {
+        Style::default().add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    let rows: Vec<Row> = app
+        .saved_connections
+        .iter()
+        .enumerate()
+        .map(|(i, conn)| {
+            let style = if i == app.saved_index && focused {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else if i == app.saved_index {
+                Style::default().add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            let label = format!("{} ({})", conn.name, conn.db_type.label());
+            Row::new(vec![Cell::from(label)]).style(style)
+        })
+        .collect();
+
+    let table = Table::new(rows, [Constraint::Percentage(100)]).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Saved (Tab) ")
+            .border_style(border_style),
+    );
+    f.render_widget(table, area);
 }
 
 fn db_type_selector<'a>(app: &'a App) -> Paragraph<'a> {
@@ -67,7 +107,7 @@ fn db_type_selector<'a>(app: &'a App) -> Paragraph<'a> {
     )
 }
 
-fn draw_connect_sqlite(f: &mut Frame, app: &App) {
+fn draw_connect_sqlite(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -79,8 +119,8 @@ fn draw_connect_sqlite(f: &mut Frame, app: &App) {
             Constraint::Length(3),
             Constraint::Min(0),
         ])
-        .margin(6)
-        .split(f.area());
+        .margin(2)
+        .split(area);
 
     f.render_widget(
         Paragraph::new(vec![
@@ -113,13 +153,15 @@ fn draw_connect_sqlite(f: &mut Frame, app: &App) {
             .block(Block::default().borders(Borders::ALL).title(" Status ")),
         chunks[5],
     );
-    f.set_cursor_position((
-        chunks[3].x + app.sqlite_input.len() as u16 + 1,
-        chunks[3].y + 1,
-    ));
+    if app.focus != Focus::Saved {
+        f.set_cursor_position((
+            chunks[3].x + app.sqlite_input.len() as u16 + 1,
+            chunks[3].y + 1,
+        ));
+    }
 }
 
-fn draw_connect_server(f: &mut Frame, app: &App) {
+fn draw_connect_server(f: &mut Frame, app: &App, area: Rect) {
     let form = &app.connect_form;
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -134,8 +176,8 @@ fn draw_connect_server(f: &mut Frame, app: &App) {
             Constraint::Length(3), // status
             Constraint::Min(0),
         ])
-        .margin(4)
-        .split(f.area());
+        .margin(2)
+        .split(area);
 
     f.render_widget(
         Paragraph::new(vec![
@@ -157,7 +199,7 @@ fn draw_connect_server(f: &mut Frame, app: &App) {
     let field_chunks = [chunks[3], chunks[4], chunks[5], chunks[6]];
 
     for (i, (label, chunk)) in labels.iter().zip(field_chunks.iter()).enumerate() {
-        let active = i == form.active;
+        let active = i == form.active && app.focus != Focus::Saved;
         let display = if *label == "Password" {
             "*".repeat(values[i].len())
         } else {
@@ -186,13 +228,11 @@ fn draw_connect_server(f: &mut Frame, app: &App) {
     );
 
     // Cursor on active field
-    let active_chunk = field_chunks[form.active];
-    let active_len = if labels[form.active] == "Password" {
-        values[form.active].len()
-    } else {
-        values[form.active].len()
-    };
-    f.set_cursor_position((active_chunk.x + active_len as u16 + 1, active_chunk.y + 1));
+    if app.focus != Focus::Saved {
+        let active_chunk = field_chunks[form.active];
+        let active_len = values[form.active].len();
+        f.set_cursor_position((active_chunk.x + active_len as u16 + 1, active_chunk.y + 1));
+    }
 }
 
 // ── Databases screen ──────────────────────────────────────────────────────────
@@ -781,11 +821,14 @@ fn draw_help_popup(f: &mut Frame) {
         Line::from(""),
         Line::from(Span::styled(" Connection & Navigation ", Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))),
         Line::from(" Ctrl+T      New connection (Connect screen)"),
+        Line::from(" Ctrl+S      Save connection (Connect screen)"),
+        Line::from(" Tab        Switch focus (Inputs / Saved list)"),
+        Line::from(" Delete     Delete saved connection"),
         Line::from(" Ctrl+W      Close current tab"),
         Line::from(" [ / ]       Switch between tabs"),
         Line::from(" Tab        Switch focus (Tables list / Data panel)"),
-        Line::from(" j / k      Navigate lists (Tables, Databases, Schemas)"),
-        Line::from(" Enter      Select / Open item"),
+        Line::from(" j / k      Navigate lists (Tables, Databases, Schemas, Saved)"),
+        Line::from(" Enter      Select / Open / Load connection"),
         Line::from(""),
         Line::from(Span::styled(" Data Panel ", Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))),
         Line::from(" j / k      Scroll rows up/down"),

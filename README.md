@@ -42,40 +42,47 @@ db-eye
 
 ## Navigation
 
+### Global
+| Key | Action |
+|-----|--------|
+| `Ctrl+C` | Quit |
+| `?` | Show / hide help popup |
+| `Ctrl+T` | New connection (Connect screen) |
+| `Ctrl+W` | Close current tab |
+| `[` / `]` | Previous / Next tab |
+
+### Connect Screen
+| Key | Action |
+|-----|--------|
+| `←` / `→` | Switch DB type (SQLite / PostgreSQL / MySQL) |
+| `Tab` | Switch focus between Form and Saved Connections |
+| `j` / `k` | Move between form fields or saved items |
+| `Ctrl+S` | Save current connection configuration |
+| `Delete` | Delete selected saved connection |
+| `Enter` | Connect / Load saved connection |
+| `Esc` | Back to main (if tab open) |
+
 ### Tables Panel (left)
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Navigate tables |
 | `Enter` | Open table |
 | `Tab` | Switch focus to data panel |
-| `Esc` | Back to database list / connect |
+| `Esc` | Back to database / schema list |
 
 ### Data Panel (right)
 | Key | Action |
 |-----|--------|
-| `j` / `k` | Scroll rows |
-| `h` / `l` | Scroll columns |
+| `j` / `k` | Scroll rows (auto-pagination) |
+| `h` / `l` | Scroll columns left / right |
 | `/` | Search / filter rows (real-time) |
-| `:` | Enter SQL query |
+| `:` | Enter SQL query (supports history with `↑`/`↓`) |
 | `i` | Insert row (disabled in read-only mode) |
-| `u` | Update selected row, requires primary key (disabled in read-only mode) |
-| `d` | Delete selected row, requires primary key + confirmation (disabled in read-only mode) |
+| `u` | Update selected row (requires PK) |
+| `d` | Delete selected row (requires PK + confirmation) |
 | `e` | Export visible data to CSV |
 | `Tab` | Switch focus to tables panel |
 | `q` / `Esc` | Back to tables panel |
-
-### Tabs (multiple connections)
-| Key | Action |
-|-----|--------|
-| `[` | Previous tab |
-| `]` | Next tab |
-| `Ctrl+T` | New connection |
-| `Ctrl+W` | Close current tab |
-
-### Global
-| Key | Action |
-|-----|--------|
-| `Ctrl+C` | Quit |
 
 ## Safety
 

@@ -15,6 +15,11 @@ Catatan perkembangan DB-Eye. Update file ini setiap ada perubahan besar agar kon
 - Menambahkan Help screen popup via `?` untuk membantu user mempelajari keybindings.
 - Menambahkan laporan "rows affected" untuk custom write queries.
 - Menambahkan in-memory query history per tab dengan navigasi `Up/Down`.
+- Menambahkan fitur Saved Connections:
+  - Persistensi menggunakan `serde` dan `serde_json` ke `~/.config/db-eye/connections.json`.
+  - Dukungan untuk menyimpan SQLite path dan Server connection form.
+  - Alur UI untuk switch focus (`Tab`) antara input form dan daftar saved connections.
+  - Shortcut `Ctrl+S` untuk save dan `Delete` untuk hapus.
 
 ### Catatan Teknis
 
@@ -22,8 +27,9 @@ Catatan perkembangan DB-Eye. Update file ini setiap ada perubahan besar agar kon
 - `CrudForm` menyisipkan schema-qualified identifier pada SQL generation untuk PostgreSQL.
 - Borrow checker issue di `handle_schemas` diselesaikan dengan memisahkan state update dan borrow tab.
 - `DbClient::execute_query` sekarang menggunakan `fetch_many` (via stream) untuk mendapatkan rows sekaligus metadata (rows affected).
-- Menambahkan dependensi `futures` untuk mendukung pengolahan stream hasil query.
+- Menambahkan dependensi `futures`, `serde`, dan `serde_json`.
 - Pindah logika `is_read_only_sql` ke `src/db.rs` sebagai utility database level.
+- `ConnectForm` menggunakan `#[serde(skip)]` untuk field `pass` agar password tidak tersimpan dalam plain text (safety measure).
 - Tests diperbarui agar sesuai dengan signature method baru yang schema-aware.
 
 ### Validasi
