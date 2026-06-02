@@ -8,6 +8,11 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
 
 ### Added
 
+- PostgreSQL schema support:
+  - Schema selection screen flow setelah pilih database.
+  - Dukungan untuk schema non-public pada data browsing, CRUD, dan metadata.
+  - Schema-qualified table names pada SQL generation.
+  - Tampilan active schema pada UI table panel.
 - `PRD.md` sebagai production roadmap.
 - `docs/DEVELOPMENT.md` untuk alur development dan definition of done.
 - `docs/DEVLOG.md` untuk catatan perkembangan.

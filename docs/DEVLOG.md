@@ -2,6 +2,44 @@
 
 Catatan perkembangan DB-Eye. Update file ini setiap ada perubahan besar agar konteks development tidak hilang.
 
+## 2026-06-02
+
+### Selesai
+
+- Implementasi PostgreSQL schema support:
+  - `DbClient` sekarang mendukung `list_schemas` dan metadata schema-aware.
+  - Alur schema selection screen setelah memilih database PostgreSQL.
+  - Navigasi bolak-balik antara Main screen, Schemas, dan Databases screen.
+  - Dukungan schema-qualified table names pada CRUD (Insert/Update/Delete).
+  - Tampilan indikator active schema pada title panel tables.
+
+### Catatan Teknis
+
+- Method `DbClient` (`list_tables`, `query_table`, `get_columns`, `count_rows`, `get_fk_values`) sekarang menerima parameter `schema` (Option<&str>).
+- `CrudForm` menyisipkan schema-qualified identifier pada SQL generation untuk PostgreSQL.
+- Borrow checker issue di `handle_schemas` diselesaikan dengan memisahkan state update dan borrow tab.
+- Tests diperbarui agar sesuai dengan signature method baru yang schema-aware.
+
+### Validasi
+
+- `cargo fmt` sukses.
+- `cargo test` sukses: 11 tests passed.
+- `cargo check` sukses.
+- Berhasil menangani composite PK dan schema non-public secara bersamaan.
+
+### Risiko / Debt
+
+- `Esc` pada `Schemas` screen saat ini selalu pop tab, yang bisa membingungkan jika user datang dari `Main` screen.
+- Belum ada dropdown/select untuk schema switching langsung dari Main screen tanpa lewat pemilihan schema.
+- Metadata MySQL/SQLite masih mengabaikan parameter schema (karena memang flat/database-level).
+
+### Next Recommended Work
+
+1. Tambahkan help screen `?` untuk keybindings.
+2. Tambahkan query history.
+3. Tambahkan rows affected untuk write query.
+4. Tambahkan saved connections.
+
 ## 2026-06-01
 
 ### Selesai

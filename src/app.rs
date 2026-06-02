@@ -141,6 +141,7 @@ pub enum Focus {
 pub enum Screen {
     Connect,
     Databases,
+    Schemas,
     Main,
     Query,
     Search,
@@ -156,6 +157,7 @@ pub enum CrudMode {
 
 pub struct CrudForm {
     pub table: String,
+    pub schema: Option<String>,
     pub columns: Vec<ColumnInfo>,
     pub values: Vec<String>,
     pub fk_hints: Vec<Vec<String>>,
@@ -173,6 +175,12 @@ pub struct CrudStatement {
 
 impl CrudForm {
     pub fn build_sql(&self) -> String {
+        let table_ident = if let Some(schema) = &self.schema {
+            format!("{}.{}", self.quote_ident(schema), self.quote_ident(&self.table))
+        } else {
+            self.quote_ident(&self.table)
+        };
+
         match self.mode {
             CrudMode::Insert => {
                 let mut cols = Vec::new();
@@ -184,14 +192,11 @@ impl CrudForm {
                     }
                 }
                 if cols.is_empty() {
-                    format!(
-                        "INSERT INTO {} DEFAULT VALUES",
-                        self.quote_ident(&self.table)
-                    )
+                    format!("INSERT INTO {} DEFAULT VALUES", table_ident)
                 } else {
                     format!(
                         "INSERT INTO {} ({}) VALUES ({})",
-                        self.quote_ident(&self.table),
+                        table_ident,
                         cols.join(", "),
                         vals.join(", ")
                     )
@@ -207,7 +212,7 @@ impl CrudForm {
                     .collect();
                 format!(
                     "UPDATE {} SET {} WHERE {}",
-                    self.quote_ident(&self.table),
+                    table_ident,
                     sets.join(", "),
                     self.pk_literal_conditions()
                 )
@@ -216,6 +221,12 @@ impl CrudForm {
     }
 
     pub fn build_statement(&self) -> CrudStatement {
+        let table_ident = if let Some(schema) = &self.schema {
+            format!("{}.{}", self.quote_ident(schema), self.quote_ident(&self.table))
+        } else {
+            self.quote_ident(&self.table)
+        };
+
         match self.mode {
             CrudMode::Insert => {
                 let mut cols = Vec::new();
@@ -229,14 +240,11 @@ impl CrudForm {
                     }
                 }
                 let sql = if cols.is_empty() {
-                    format!(
-                        "INSERT INTO {} DEFAULT VALUES",
-                        self.quote_ident(&self.table)
-                    )
+                    format!("INSERT INTO {} DEFAULT VALUES", table_ident)
                 } else {
                     format!(
                         "INSERT INTO {} ({}) VALUES ({})",
-                        self.quote_ident(&self.table),
+                        table_ident,
                         cols.join(", "),
                         placeholders.join(", ")
                     )
@@ -259,7 +267,7 @@ impl CrudForm {
                 let where_clause = self.pk_placeholder_conditions(&mut values);
                 let sql = format!(
                     "UPDATE {} SET {} WHERE {}",
-                    self.quote_ident(&self.table),
+                    table_ident,
                     sets.join(", "),
                     where_clause
                 );
@@ -366,6 +374,8 @@ pub struct DeleteConfirm {
 pub struct Tab {
     pub path: String,
     pub db: DbClient,
+    pub schemas: Vec<String>,
+    pub schema_index: usize,
     pub tables: Vec<String>,
     pub table_index: usize,
     pub result: Option<QueryResult>,
@@ -383,6 +393,8 @@ impl Tab {
         Self {
             path,
             db,
+            schemas: vec![],
+            schema_index: 0,
             tables: vec![],
             table_index: 0,
             result: None,
@@ -394,6 +406,10 @@ impl Tab {
             search_query: String::new(),
             server_info: None,
         }
+    }
+
+    pub fn current_schema(&self) -> Option<&str> {
+        self.schemas.get(self.schema_index).map(|s| s.as_str())
     }
 
     pub fn update_filter(&mut self) {
@@ -566,6 +582,7 @@ impl App {
                     match self.screen {
                         Screen::Connect => self.handle_connect(key.code).await,
                         Screen::Databases => self.handle_databases(key.code).await,
+                        Screen::Schemas => self.handle_schemas(key.code).await,
                         Screen::Main => self.handle_main(key.code, key.modifiers).await,
                         Screen::Query => self.handle_query(key.code).await,
                         Screen::Search => self.handle_search(key.code),
@@ -576,6 +593,70 @@ impl App {
             }
         }
         Ok(())
+    }
+
+    async fn handle_schemas(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Char('j') | KeyCode::Down => {
+                if let Some(tab) = self.current_tab_mut() {
+                    if tab.schema_index + 1 < tab.schemas.len() {
+                        tab.schema_index += 1;
+                    }
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                if let Some(tab) = self.current_tab_mut() {
+                    if tab.schema_index > 0 {
+                        tab.schema_index -= 1;
+                    }
+                }
+            }
+            KeyCode::Enter => {
+                let (schema, result) = if let Some(tab) = self.current_tab_mut() {
+                    let schema = tab.current_schema().map(|s| s.to_string());
+                    let res = tab.db.list_tables(schema.as_deref()).await;
+                    (schema, res)
+                } else {
+                    return;
+                };
+
+                match result {
+                    Ok(tables) => {
+                        let path = if let Some(tab) = self.current_tab_mut() {
+                            tab.tables = tables;
+                            tab.path.clone()
+                        } else {
+                            String::new()
+                        };
+                        self.screen = Screen::Main;
+                        self.focus = Focus::Tables;
+                        self.server_conn = None;
+                        self.status = format!(
+                            "Connected: {} ({})  |  {}",
+                            path,
+                            schema.unwrap_or_else(|| "public".to_string()),
+                            self.table_help()
+                        );
+                    }
+                    Err(e) => {
+                        self.status = format_db_error("Loading tables", &e);
+                    }
+                }
+            }
+            KeyCode::Esc => {
+                if !self.tabs.is_empty() {
+                    self.tabs.pop();
+                    if self.tabs.is_empty() {
+                        self.active_tab = 0;
+                    } else {
+                        self.active_tab = self.tabs.len() - 1;
+                    }
+                }
+                self.screen = Screen::Databases;
+                self.status = "j/k: navigate  Enter: open database  Esc: back".into();
+            }
+            _ => {}
+        }
     }
 
     pub async fn connect_path<B: Backend>(&mut self, path: String, terminal: &mut Terminal<B>)
@@ -596,7 +677,7 @@ impl App {
         match DbClient::connect(&url).await {
             Ok(client) => {
                 let mut tab = Tab::new(path.clone(), client);
-                match tab.db.list_tables().await {
+                match tab.db.list_tables(None).await {
                     Ok(tables) => tab.tables = tables,
                     Err(e) => {
                         self.status = format_db_error("Loading tables", &e);
@@ -663,14 +744,37 @@ impl App {
         match DbClient::connect(&url).await {
             Ok(client) => {
                 let mut tab = Tab::new(display.clone(), client);
-                match tab.db.list_tables().await {
+                tab.server_info = Some((sc_form, sc_db_type));
+
+                if tab.db.db_type == crate::db::DbType::Postgres {
+                    match tab.db.list_schemas().await {
+                        Ok(schemas) => {
+                            tab.schemas = schemas;
+                            tab.schema_index = tab
+                                .schemas
+                                .iter()
+                                .position(|s| s == "public")
+                                .unwrap_or(0);
+                            self.tabs.push(tab);
+                            self.active_tab = self.tabs.len() - 1;
+                            self.screen = Screen::Schemas;
+                            self.status = "j/k: navigate  Enter: select schema  Esc: back".into();
+                            return;
+                        }
+                        Err(e) => {
+                            self.status = format_db_error("Listing schemas", &e);
+                            return;
+                        }
+                    }
+                }
+
+                match tab.db.list_tables(None).await {
                     Ok(tables) => tab.tables = tables,
                     Err(e) => {
                         self.status = format_db_error("Loading tables", &e);
                         return;
                     }
                 }
-                tab.server_info = Some((sc_form, sc_db_type));
                 self.tabs.push(tab);
                 self.active_tab = self.tabs.len() - 1;
                 self.screen = Screen::Main;
@@ -858,6 +962,17 @@ impl App {
     }
 
     async fn go_back(&mut self) {
+        let is_postgres = self
+            .current_tab()
+            .map(|t| t.db.db_type == crate::db::DbType::Postgres)
+            .unwrap_or(false);
+
+        if is_postgres {
+            self.screen = Screen::Schemas;
+            self.status = "j/k: navigate  Enter: select schema  Esc: back".into();
+            return;
+        }
+
         let server_info = self.current_tab().and_then(|t| t.server_info.clone());
         if let Some((form, db_type)) = server_info {
             // Reconnect to server and show database list
@@ -1078,7 +1193,8 @@ impl App {
             None => return,
         };
         if let Some(tab) = self.tabs.get(self.active_tab) {
-            match tab.db.get_columns(&table).await {
+            let schema = tab.current_schema().map(|s| s.to_string());
+            match tab.db.get_columns(schema.as_deref(), &table).await {
                 Ok(columns) => {
                     let mut fk_hints: Vec<Vec<String>> = Vec::new();
                     for col in &columns {
@@ -1086,7 +1202,7 @@ impl App {
                             (&col.fk_table, &col.fk_column)
                         {
                             tab.db
-                                .get_fk_values(ref_table, ref_col)
+                                .get_fk_values(schema.as_deref(), ref_table, ref_col)
                                 .await
                                 .unwrap_or_default()
                         } else {
@@ -1097,6 +1213,7 @@ impl App {
                     let values = columns.iter().map(|_| String::new()).collect();
                     self.crud_form = Some(CrudForm {
                         table,
+                        schema,
                         active_field: columns.iter().position(|c| !c.is_pk).unwrap_or(0),
                         columns,
                         values,
@@ -1138,7 +1255,8 @@ impl App {
             (table, row)
         };
         if let Some(tab) = self.tabs.get(self.active_tab) {
-            match tab.db.get_columns(&table).await {
+            let schema = tab.current_schema().map(|s| s.to_string());
+            match tab.db.get_columns(schema.as_deref(), &table).await {
                 Ok(columns) => {
                     if !columns.iter().any(|c| c.is_pk) {
                         self.status = "Update requires a primary key".into();
@@ -1154,7 +1272,7 @@ impl App {
                             (&col.fk_table, &col.fk_column)
                         {
                             tab.db
-                                .get_fk_values(ref_table, ref_col)
+                                .get_fk_values(schema.as_deref(), ref_table, ref_col)
                                 .await
                                 .unwrap_or_default()
                         } else {
@@ -1194,6 +1312,7 @@ impl App {
                     self.crud_form = Some(CrudForm {
                         active_field: columns.iter().position(|c| !c.is_pk).unwrap_or(0),
                         table,
+                        schema,
                         columns,
                         values,
                         fk_hints,
@@ -1239,7 +1358,8 @@ impl App {
             (table, row, cols)
         };
         if let Some(tab) = self.tabs.get(self.active_tab) {
-            match tab.db.get_columns(&table).await {
+            let schema = tab.current_schema().map(|s| s.to_string());
+            match tab.db.get_columns(schema.as_deref(), &table).await {
                 Ok(col_info) => {
                     let mut pk_columns: Vec<ColumnInfo> =
                         col_info.iter().filter(|c| c.is_pk).cloned().collect();
@@ -1274,11 +1394,12 @@ impl App {
                             format!("{} = {}", quote_ident(&pk.name), placeholder)
                         })
                         .collect();
-                    let sql = format!(
-                        "DELETE FROM {} WHERE {}",
-                        quote_ident(&table),
-                        conditions.join(" AND ")
-                    );
+                    let table_ident = if let Some(s) = &schema {
+                        format!("{}.{}", quote_ident(s), quote_ident(&table))
+                    } else {
+                        quote_ident(&table)
+                    };
+                    let sql = format!("DELETE FROM {} WHERE {}", table_ident, conditions.join(" AND "));
                     let preview = row_data
                         .iter()
                         .take(3)
@@ -1411,7 +1532,7 @@ impl App {
     }
 
     async fn load_table_data(&mut self) {
-        let (table, offset, page_size) = {
+        let (table, offset, page_size, schema) = {
             let tab = match self.current_tab() {
                 Some(t) => t,
                 None => return,
@@ -1420,16 +1541,16 @@ impl App {
                 Some(t) => t.clone(),
                 None => return,
             };
-            (table, tab.row_offset, self.page_size)
+            (table, tab.row_offset, self.page_size, tab.current_schema().map(|s| s.to_string()))
         };
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
-            match tab.db.count_rows(&table).await {
+            match tab.db.count_rows(schema.as_deref(), &table).await {
                 Ok(count) => tab.total_rows = count,
                 Err(_) => tab.total_rows = 0,
             }
             match tab
                 .db
-                .query_table(&table, page_size as u32, offset as u32)
+                .query_table(schema.as_deref(), &table, page_size as u32, offset as u32)
                 .await
             {
                 Ok(result) => {
@@ -1471,6 +1592,7 @@ mod tests {
     fn form(mode: CrudMode) -> CrudForm {
         CrudForm {
             table: "users".to_string(),
+            schema: None,
             columns: vec![col("id", true), col("name", false), col("email", false)],
             values: vec!["1".to_string(), "Ada".to_string(), "NULL".to_string()],
             fk_hints: vec![vec![], vec![], vec![]],
@@ -1523,6 +1645,7 @@ mod tests {
     fn composite_pk_update_statement_uses_all_pk_columns() {
         let form = CrudForm {
             table: "memberships".to_string(),
+            schema: None,
             columns: vec![
                 ColumnInfo {
                     name: "tenant_id".to_string(),
@@ -1665,7 +1788,7 @@ mod tests {
         .await
         .unwrap();
 
-        let columns = db.get_columns("memberships").await.unwrap();
+        let columns = db.get_columns(None, "memberships").await.unwrap();
         let pk_orders: Vec<(String, i64)> = columns
             .iter()
             .filter(|c| c.is_pk)
@@ -1678,6 +1801,7 @@ mod tests {
 
         let insert_form = CrudForm {
             table: "memberships".to_string(),
+            schema: None,
             columns: columns.clone(),
             values: vec!["t1".to_string(), "u1".to_string(), "Ada".to_string()],
             fk_hints: vec![vec![], vec![], vec![]],
@@ -1697,6 +1821,7 @@ mod tests {
 
         let update_form = CrudForm {
             table: "memberships".to_string(),
+            schema: None,
             columns,
             values: vec!["t1".to_string(), "u1".to_string(), "Grace".to_string()],
             fk_hints: vec![vec![], vec![], vec![]],

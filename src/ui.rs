@@ -11,6 +11,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     match app.screen {
         Screen::Connect => draw_connect(f, app),
         Screen::Databases => draw_databases(f, app),
+        Screen::Schemas => draw_schemas(f, app),
         Screen::Main => draw_main(f, app),
         Screen::Query => {
             draw_main(f, app);
@@ -240,6 +241,49 @@ fn draw_databases(f: &mut Frame, app: &App) {
     );
 }
 
+fn draw_schemas(f: &mut Frame, app: &App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(3)])
+        .split(f.area());
+
+    let tab = match app.current_tab() {
+        Some(t) => t,
+        None => return,
+    };
+
+    let title = format!(" Schemas — {} ", tab.path);
+
+    let rows: Vec<Row> = tab
+        .schemas
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let style = if i == tab.schema_index {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            };
+            Row::new(vec![Cell::from(s.as_str())]).style(style)
+        })
+        .collect();
+
+    let table = Table::new(rows, [Constraint::Percentage(100)])
+        .header(
+            Row::new(vec!["Schema"])
+                .style(Style::default().add_modifier(Modifier::BOLD))
+                .bottom_margin(1),
+        )
+        .block(Block::default().borders(Borders::ALL).title(title));
+
+    f.render_widget(table, chunks[0]);
+    f.render_widget(
+        Paragraph::new(app.status.as_str())
+            .block(Block::default().borders(Borders::ALL).title(" Keys ")),
+        chunks[1],
+    );
+}
+
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 fn draw_main(f: &mut Frame, app: &App) {
@@ -330,10 +374,14 @@ fn draw_tables_panel(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
+    let schema_label = tab
+        .current_schema()
+        .map(|s| format!(" [{}]", s))
+        .unwrap_or_default();
     let table = Table::new(rows, [Constraint::Percentage(100)]).block(
         Block::default()
             .borders(Borders::ALL)
-            .title(format!(" Tables ({}) ", tab.tables.len()))
+            .title(format!(" Tables ({}){} ", tab.tables.len(), schema_label))
             .border_style(border_style),
     );
     f.render_widget(table, area);

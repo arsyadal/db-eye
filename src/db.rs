@@ -154,28 +154,45 @@ impl DbClient {
         Ok(rows.iter().map(|r| row_cell(r, 0)).collect())
     }
 
-    pub async fn list_tables(&self) -> Result<Vec<String>, sqlx::Error> {
-        let sql = match self.db_type {
-            DbType::Sqlite => "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+    pub async fn list_schemas(&self) -> Result<Vec<String>, sqlx::Error> {
+        match self.db_type {
             DbType::Postgres => {
-                "SELECT tablename::text FROM pg_tables WHERE schemaname='public' ORDER BY tablename"
+                let sql = "SELECT schema_name::text FROM information_schema.schemata \
+                           WHERE schema_name NOT LIKE 'pg_%' AND schema_name != 'information_schema' \
+                           ORDER BY schema_name";
+                let rows = sqlx::query(sql).fetch_all(&self.pool).await?;
+                Ok(rows.iter().map(|r| row_cell(r, 0)).collect())
+            }
+            _ => Ok(vec![]),
+        }
+    }
+
+    pub async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<String>, sqlx::Error> {
+        let sql = match self.db_type {
+            DbType::Sqlite => "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name".to_string(),
+            DbType::Postgres => {
+                format!(
+                    "SELECT tablename::text FROM pg_tables WHERE schemaname='{}' ORDER BY tablename",
+                    schema.unwrap_or("public")
+                )
             }
             DbType::Mysql => {
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name"
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name".to_string()
             }
         };
-        let rows = sqlx::query(sql).fetch_all(&self.pool).await?;
+        let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
         Ok(rows.iter().map(|r| row_cell(r, 0)).collect())
     }
 
     pub async fn query_table(
         &self,
+        schema: Option<&str>,
         table: &str,
         limit: u32,
         offset: u32,
     ) -> Result<QueryResult, sqlx::Error> {
         match self.db_type {
-            DbType::Postgres => self.pg_text_query(table, limit, offset).await,
+            DbType::Postgres => self.pg_text_query(schema, table, limit, offset).await,
             _ => {
                 let sql = format!(
                     "SELECT * FROM {} LIMIT {} OFFSET {}",
@@ -191,15 +208,17 @@ impl DbClient {
     // Postgres: cast every column to text to bypass sqlx::any type limitations
     async fn pg_text_query(
         &self,
+        schema: Option<&str>,
         table: &str,
         limit: u32,
         offset: u32,
     ) -> Result<QueryResult, sqlx::Error> {
+        let schema_name = schema.unwrap_or("public");
         let cols_sql = format!(
             "SELECT column_name::text FROM information_schema.columns \
-             WHERE table_schema = 'public' AND table_name = '{}' \
+             WHERE table_schema = '{}' AND table_name = '{}' \
              ORDER BY ordinal_position",
-            table
+            schema_name, table
         );
         let col_rows = sqlx::query(&cols_sql).fetch_all(&self.pool).await?;
         if col_rows.is_empty() {
@@ -215,8 +234,9 @@ impl DbClient {
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
-            "SELECT {} FROM {} LIMIT {} OFFSET {}",
+            "SELECT {} FROM {}.{} LIMIT {} OFFSET {}",
             select,
+            self.quote_ident(schema_name),
             self.quote_ident(table),
             limit,
             offset
@@ -284,7 +304,11 @@ impl DbClient {
         })
     }
 
-    pub async fn get_columns(&self, table: &str) -> Result<Vec<ColumnInfo>, sqlx::Error> {
+    pub async fn get_columns(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+    ) -> Result<Vec<ColumnInfo>, sqlx::Error> {
         match self.db_type {
             DbType::Sqlite => {
                 let sql = format!("PRAGMA table_info(\"{}\")", table);
@@ -327,6 +351,7 @@ impl DbClient {
                 Ok(cols)
             }
             DbType::Postgres => {
+                let schema_name = schema.unwrap_or("public");
                 let sql = format!(
                     "SELECT c.column_name::text, c.data_type::text, \
                      CASE WHEN pk.column_name IS NOT NULL THEN 1 ELSE 0 END, \
@@ -338,10 +363,12 @@ impl DbClient {
                          JOIN information_schema.key_column_usage kcu \
                            ON tc.constraint_name = kcu.constraint_name \
                           AND tc.table_name = kcu.table_name \
+                          AND tc.table_schema = kcu.table_schema \
                          WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = '{}' \
+                           AND tc.table_schema = '{}' \
                      ) pk ON c.column_name = pk.column_name \
-                     WHERE c.table_name = '{}' ORDER BY c.ordinal_position",
-                    table, table
+                     WHERE c.table_name = '{}' AND c.table_schema = '{}' ORDER BY c.ordinal_position",
+                    table, schema_name, table, schema_name
                 );
                 let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
                 let mut cols: Vec<ColumnInfo> = rows
@@ -363,8 +390,9 @@ impl DbClient {
                       AND kcu.constraint_schema = rc.constraint_schema \
                      JOIN information_schema.constraint_column_usage ccu \
                        ON rc.unique_constraint_name = ccu.constraint_name \
-                     WHERE kcu.table_schema = 'public' AND kcu.table_name = '{}'",
-                    table
+                      AND rc.unique_constraint_schema = ccu.constraint_schema \
+                     WHERE kcu.table_schema = '{}' AND kcu.table_name = '{}'",
+                    schema_name, table
                 );
                 let fk_rows = sqlx::query(&fk_sql)
                     .fetch_all(&self.pool)
@@ -434,15 +462,20 @@ impl DbClient {
 
     pub async fn get_fk_values(
         &self,
+        schema: Option<&str>,
         ref_table: &str,
         ref_column: &str,
     ) -> Result<Vec<String>, sqlx::Error> {
         let sql = match self.db_type {
-            DbType::Postgres => format!(
-                "SELECT DISTINCT {}::text FROM {} ORDER BY 1 LIMIT 50",
-                self.quote_ident(ref_column),
-                self.quote_ident(ref_table)
-            ),
+            DbType::Postgres => {
+                let schema_name = schema.unwrap_or("public");
+                format!(
+                    "SELECT DISTINCT {}::text FROM {}.{} ORDER BY 1 LIMIT 50",
+                    self.quote_ident(ref_column),
+                    self.quote_ident(schema_name),
+                    self.quote_ident(ref_table)
+                )
+            }
             _ => format!(
                 "SELECT DISTINCT {} FROM {} ORDER BY 1 LIMIT 50",
                 self.quote_ident(ref_column),
@@ -466,9 +499,16 @@ impl DbClient {
         Ok(result.rows_affected())
     }
 
-    pub async fn count_rows(&self, table: &str) -> Result<i64, sqlx::Error> {
+    pub async fn count_rows(&self, schema: Option<&str>, table: &str) -> Result<i64, sqlx::Error> {
         let sql = match self.db_type {
-            DbType::Postgres => format!("SELECT COUNT(*)::text FROM {}", self.quote_ident(table)),
+            DbType::Postgres => {
+                let schema_name = schema.unwrap_or("public");
+                format!(
+                    "SELECT COUNT(*)::text FROM {}.{}",
+                    self.quote_ident(schema_name),
+                    self.quote_ident(table)
+                )
+            }
             _ => format!("SELECT COUNT(*) FROM {}", self.quote_ident(table)),
         };
         let row = sqlx::query(&sql).fetch_one(&self.pool).await?;
