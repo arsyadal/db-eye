@@ -789,7 +789,7 @@ fn draw_crud_form(f: &mut Frame, app: &App) {
             form.values[i].clone()
         };
 
-        let editable = !is_pk || form.mode == CrudMode::Insert;
+        let editable = !col.is_binary() && (!is_pk || form.mode == CrudMode::Insert);
         let border_style = if is_active && editable {
             Style::default().add_modifier(Modifier::BOLD)
         } else {
@@ -799,8 +799,18 @@ fn draw_crud_form(f: &mut Frame, app: &App) {
         let fk_label = col
             .fk_table
             .as_deref()
-            .map(|t| format!(" {} ({}) → {} ", col.name, col.data_type, t))
-            .unwrap_or_else(|| format!(" {} ({}) ", col.name, col.data_type));
+            .map(|t| {
+                format!(
+                    " {} ({}) → {} | {} ",
+                    col.name,
+                    col.data_type,
+                    t,
+                    col.input_hint()
+                )
+            })
+            .unwrap_or_else(|| {
+                format!(" {} ({}) | {} ", col.name, col.data_type, col.input_hint())
+            });
         let field_rect = Rect {
             x: field_area.x,
             y,
@@ -859,7 +869,7 @@ fn draw_crud_form(f: &mut Frame, app: &App) {
     let hint = if app.status.starts_with("Error") {
         app.status.as_str()
     } else {
-        "  Tab or ↑↓: navigate fields    Enter: save    Esc: cancel"
+        "  Tab or ↑↓: navigate fields    Enter: save    Esc: cancel    empty/\\null = NULL"
     };
     let hint_style = if app.status.starts_with("Error") {
         Style::default().add_modifier(Modifier::BOLD)

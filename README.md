@@ -122,6 +122,9 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 - Composite primary key support for update/delete
 - Read-only mode for safer browsing
 - Friendly database errors for constraints, permissions, and SQL syntax
+- Data-type validation for CRUD and inline edits
+- Distinct NULL display (`<NULL>`) so string `NULL` remains editable as text
+- CRUD/edit forms treat empty input or `\\null` as database NULL
 - Foreign-key value hints in insert/update forms
 - Export query results to CSV
 - Multiple simultaneous DB connections (tabs)

@@ -56,17 +56,17 @@ Target dokumen ini adalah daftar fitur yang perlu diimplementasikan atau bisa di
 
 ### 4. Data Type Handling
 
-- Deteksi tipe data column dari metadata.
+- Deteksi tipe data column dari metadata. ✅ initial implementation
 - Input form harus handle:
   - string
-  - integer
-  - float/decimal
-  - boolean
+  - integer ✅ initial validation
+  - float/decimal ✅ initial validation
+  - boolean ✅ initial validation
   - date/time/timestamp
-  - NULL
-  - blob/binary sebagai read-only/placeholder
+  - NULL ✅ initial implementation
+  - blob/binary sebagai read-only/placeholder ✅ initial validation
 - Jangan treat semua input sebagai string.
-- Tampilkan nilai NULL beda dari string `"NULL"`.
+- Tampilkan nilai NULL beda dari string `"NULL"`. ✅ initial implementation
 
 ### 5. Error Handling dan Recovery
 
@@ -215,6 +215,7 @@ DB-Eye bisa dianggap production-ready jika:
 - SQLite integration tests. ✅ initial CRUD coverage
 - Read-only mode. ✅ initial implementation
 - Better error messages. ✅ initial implementation
+- Data type and NULL handling. ✅ initial implementation
 
 ### v0.4
 

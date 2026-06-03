@@ -548,6 +548,8 @@ impl DbClient {
     }
 }
 
+pub const NULL_DISPLAY: &str = "<NULL>";
+
 pub struct QueryResult {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
@@ -562,6 +564,83 @@ pub struct ColumnInfo {
     pub pk_order: i64,
     pub fk_table: Option<String>,
     pub fk_column: Option<String>,
+}
+
+impl ColumnInfo {
+    pub fn input_hint(&self) -> &'static str {
+        let kind = self.normalized_type();
+        if is_integer_type(&kind) {
+            "integer | empty/\\null = NULL"
+        } else if is_float_type(&kind) {
+            "number | empty/\\null = NULL"
+        } else if is_bool_type(&kind) {
+            "true/false/1/0 | empty/\\null = NULL"
+        } else if is_binary_type(&kind) {
+            "binary/blob is read-only here"
+        } else if is_datetime_type(&kind) {
+            "date/time text | empty/\\null = NULL"
+        } else {
+            "text | empty/\\null = NULL"
+        }
+    }
+
+    pub fn is_binary(&self) -> bool {
+        is_binary_type(&self.normalized_type())
+    }
+
+    pub fn validate_input(&self, value: &str) -> Result<(), String> {
+        if value.is_empty() || value.eq_ignore_ascii_case("\\null") || value == NULL_DISPLAY {
+            return Ok(());
+        }
+
+        let kind = self.normalized_type();
+        if self.is_binary() {
+            return Err(format!(
+                "{} is binary/blob and cannot be edited inline",
+                self.name
+            ));
+        }
+        if is_integer_type(&kind) && value.parse::<i64>().is_err() {
+            return Err(format!("{} expects an integer", self.name));
+        }
+        if is_float_type(&kind) && value.parse::<f64>().is_err() {
+            return Err(format!("{} expects a number", self.name));
+        }
+        if is_bool_type(&kind)
+            && !matches!(value.to_lowercase().as_str(), "true" | "false" | "1" | "0")
+        {
+            return Err(format!("{} expects true/false or 1/0", self.name));
+        }
+        Ok(())
+    }
+
+    fn normalized_type(&self) -> String {
+        self.data_type.to_lowercase()
+    }
+}
+
+fn is_integer_type(kind: &str) -> bool {
+    kind.contains("int") || matches!(kind, "serial" | "bigserial" | "smallserial")
+}
+
+fn is_float_type(kind: &str) -> bool {
+    kind.contains("real")
+        || kind.contains("double")
+        || kind.contains("float")
+        || kind.contains("numeric")
+        || kind.contains("decimal")
+}
+
+fn is_bool_type(kind: &str) -> bool {
+    kind.contains("bool") || kind == "bit"
+}
+
+fn is_binary_type(kind: &str) -> bool {
+    kind.contains("blob") || kind.contains("binary") || kind.contains("bytea")
+}
+
+fn is_datetime_type(kind: &str) -> bool {
+    kind.contains("date") || kind.contains("time")
 }
 
 fn row_cell(row: &AnyRow, i: usize) -> String {
@@ -617,7 +696,7 @@ fn row_to_strings(row: &AnyRow) -> Vec<String> {
                     row.try_get::<Vec<u8>, _>(i)
                         .map(|v| format!("<blob {}b>", v.len()))
                 })
-                .unwrap_or_else(|_| "NULL".to_string())
+                .unwrap_or_else(|_| NULL_DISPLAY.to_string())
         })
         .collect()
 }
@@ -652,7 +731,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             result.rows,
-            vec![vec!["Ada's".to_string(), "NULL".to_string()]]
+            vec![vec!["Ada's".to_string(), NULL_DISPLAY.to_string()]]
         );
         db.pool.close().await;
         let _ = std::fs::remove_file(path);

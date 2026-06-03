@@ -1,4 +1,4 @@
-use crate::db::{ColumnInfo, DbClient, QueryResult, format_db_error};
+use crate::db::{ColumnInfo, DbClient, NULL_DISPLAY, QueryResult, format_db_error};
 use crate::ui;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};
@@ -223,7 +223,7 @@ impl CrudForm {
                 let mut cols = Vec::new();
                 let mut vals = Vec::new();
                 for (col, value) in self.columns.iter().zip(self.values.iter()) {
-                    if !col.is_pk || !value.is_empty() {
+                    if !col.is_binary() && (!col.is_pk || !value.is_empty()) {
                         cols.push(self.quote_ident(&col.name));
                         vals.push(Self::sql_value(value));
                     }
@@ -244,7 +244,7 @@ impl CrudForm {
                     .columns
                     .iter()
                     .zip(self.values.iter())
-                    .filter(|(c, _)| !c.is_pk)
+                    .filter(|(c, _)| !c.is_pk && !c.is_binary())
                     .map(|(c, v)| format!("{} = {}", self.quote_ident(&c.name), Self::sql_value(v)))
                     .collect();
                 format!(
@@ -274,7 +274,7 @@ impl CrudForm {
                 let mut placeholders = Vec::new();
                 let mut values = Vec::new();
                 for (col, value) in self.columns.iter().zip(self.values.iter()) {
-                    if !col.is_pk || !value.is_empty() {
+                    if !col.is_binary() && (!col.is_pk || !value.is_empty()) {
                         cols.push(self.quote_ident(&col.name));
                         values.push(Self::form_value(value));
                         placeholders.push(self.placeholder(values.len()));
@@ -296,7 +296,7 @@ impl CrudForm {
                 let mut sets = Vec::new();
                 let mut values = Vec::new();
                 for (col, value) in self.columns.iter().zip(self.values.iter()) {
-                    if !col.is_pk {
+                    if !col.is_pk && !col.is_binary() {
                         values.push(Self::form_value(value));
                         sets.push(format!(
                             "{} = {}",
@@ -359,7 +359,7 @@ impl CrudForm {
     }
 
     fn form_value(value: &str) -> Option<String> {
-        if value.is_empty() || value.eq_ignore_ascii_case("NULL") {
+        if value.is_empty() || value.eq_ignore_ascii_case("\\null") || value == NULL_DISPLAY {
             None
         } else {
             Some(value.to_string())
@@ -367,18 +367,32 @@ impl CrudForm {
     }
 
     fn sql_value(value: &str) -> String {
-        if value.is_empty() || value.eq_ignore_ascii_case("NULL") {
+        if value.is_empty() || value.eq_ignore_ascii_case("\\null") || value == NULL_DISPLAY {
             "NULL".to_string()
         } else {
             format!("'{}'", value.replace('\'', "''"))
         }
     }
 
+    pub fn validate_values(&self) -> Result<(), String> {
+        for (index, (col, value)) in self.columns.iter().zip(self.values.iter()).enumerate() {
+            if self.mode == CrudMode::Update && col.is_pk {
+                continue;
+            }
+            if self.mode == CrudMode::Insert && col.is_pk && value.is_empty() {
+                continue;
+            }
+            col.validate_input(value)
+                .map_err(|msg| format!("{}: {}", index + 1, msg))?;
+        }
+        Ok(())
+    }
+
     pub fn editable_indices(&self) -> Vec<usize> {
         self.columns
             .iter()
             .enumerate()
-            .filter(|(_, c)| !c.is_pk || self.mode == CrudMode::Insert)
+            .filter(|(_, c)| !c.is_binary() && (!c.is_pk || self.mode == CrudMode::Insert))
             .map(|(i, _)| i)
             .collect()
     }
@@ -1610,6 +1624,14 @@ impl App {
                     };
                     let numbered_placeholders = tab.db.uses_numbered_placeholders();
 
+                    if let Some(col) = col_info.iter().find(|c| c.name == col_name.as_str()) {
+                        if let Err(msg) = col.validate_input(&new_val) {
+                            self.status = msg;
+                            tab.editing_cell = None;
+                            return;
+                        }
+                    }
+
                     let mut values = vec![CrudForm::form_value(&new_val)];
                     let mut conditions = Vec::new();
 
@@ -1732,7 +1754,10 @@ impl App {
                     self.crud_form = Some(CrudForm {
                         table,
                         schema,
-                        active_field: columns.iter().position(|c| !c.is_pk).unwrap_or(0),
+                        active_field: columns
+                            .iter()
+                            .position(|c| !c.is_pk && !c.is_binary())
+                            .unwrap_or(0),
                         columns,
                         values,
                         fk_hints,
@@ -1780,7 +1805,7 @@ impl App {
                         self.status = "Update requires a primary key".into();
                         return;
                     }
-                    if !columns.iter().any(|c| !c.is_pk) {
+                    if !columns.iter().any(|c| !c.is_pk && !c.is_binary()) {
                         self.status = "No editable columns".into();
                         return;
                     }
@@ -1828,7 +1853,10 @@ impl App {
                         })
                         .collect();
                     self.crud_form = Some(CrudForm {
-                        active_field: columns.iter().position(|c| !c.is_pk).unwrap_or(0),
+                        active_field: columns
+                            .iter()
+                            .position(|c| !c.is_pk && !c.is_binary())
+                            .unwrap_or(0),
                         table,
                         schema,
                         columns,
@@ -1973,6 +2001,14 @@ impl App {
                 }
             }
             KeyCode::Enter => {
+                if let Some(error) = self
+                    .crud_form
+                    .as_ref()
+                    .and_then(|f| f.validate_values().err())
+                {
+                    self.status = format!("Validation: {error}");
+                    return;
+                }
                 let statement = self.crud_form.as_ref().map(|f| f.build_statement());
                 if let Some(statement) = statement {
                     if let Some(tab) = self.tabs.get_mut(self.active_tab) {
@@ -2129,7 +2165,7 @@ mod tests {
             table: "users".to_string(),
             schema: None,
             columns: vec![col("id", true), col("name", false), col("email", false)],
-            values: vec!["1".to_string(), "Ada".to_string(), "NULL".to_string()],
+            values: vec!["1".to_string(), "Ada".to_string(), "\\null".to_string()],
             fk_hints: vec![vec![], vec![], vec![]],
             pk_values: vec![("id".to_string(), "1".to_string())],
             active_field: 1,
@@ -2163,6 +2199,25 @@ mod tests {
             stmt.values,
             vec![Some("Ada".to_string()), None, Some("1".to_string())]
         );
+    }
+
+    #[test]
+    fn literal_null_string_is_not_database_null() {
+        assert_eq!(CrudForm::form_value("NULL"), Some("NULL".to_string()));
+        assert_eq!(CrudForm::form_value("\\null"), None);
+        assert_eq!(CrudForm::form_value(NULL_DISPLAY), None);
+    }
+
+    #[test]
+    fn validates_numeric_and_boolean_inputs() {
+        let mut form = form(CrudMode::Insert);
+        form.columns[1].data_type = "integer".to_string();
+        form.values[1] = "not-a-number".to_string();
+        assert!(form.validate_values().is_err());
+
+        form.columns[1].data_type = "boolean".to_string();
+        form.values[1] = "true".to_string();
+        assert!(form.validate_values().is_ok());
     }
 
     #[test]

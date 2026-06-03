@@ -12,6 +12,10 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
   - Edit cell langsung di panel data via `Enter` atau `e`.
   - Simpan perubahan ke database via parameterized `UPDATE`.
   - Visual feedback warna kuning pada cell yang sedang diedit.
+- Data type handling:
+  - Validasi input CRUD/inline edit untuk integer, number, boolean, dan binary/blob.
+  - Nilai NULL ditampilkan sebagai `<NULL>` supaya string `NULL` tetap beda dari database NULL.
+  - Input kosong atau `\\null` pada form CRUD/edit dikirim sebagai database NULL.
 - Saved Connections:
   - Simpan konfigurasi koneksi (host, user, dsb) via `Ctrl+S`.
   - Pilih dari daftar koneksi tersimpan pada screen Connect via `Tab`.
