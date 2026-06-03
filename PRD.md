@@ -198,7 +198,7 @@ Setiap development wajib terdokumentasi agar arah produk tetap jelas:
 DB-Eye bisa dianggap production-ready jika:
 
 - Semua P0 selesai.
-- CI hijau untuk fmt, clippy, test, dan release build.
+- CI hijau untuk fmt, clippy, test, dan release build. ✅ initial implementation
 - CRUD menggunakan parameterized query.
 - Update/delete aman untuk primary key tunggal dan composite key. ✅ initial implementation
 - PostgreSQL schema non-public didukung.
@@ -234,6 +234,6 @@ DB-Eye bisa dianggap production-ready jika:
 ### v1.0
 
 - Full P0 complete.
-- CI/release pipeline.
+- CI/release pipeline. ✅ CI initial implementation
 - Production safety polish.
 - Documentation lengkap.
