@@ -78,12 +78,22 @@ db-eye
 | `Enter` / `e` | **Inline Cell Edit** (starts editing selected cell) |
 | `/` | Search / filter rows (real-time) |
 | `:` | Enter SQL query (supports history with `↑`/`↓`) |
+| `Ctrl+H` / `H` | Open query history |
 | `i` | Insert row (disabled in read-only mode) |
 | `u` | Update selected row (full form) |
 | `d` | Delete selected row (requires PK + confirmation) |
 | `v` | Export visible data to CSV (mnemonic: view/export) |
 | `Tab` | Switch focus to tables panel |
 | `q` / `Esc` | Back to tables panel |
+
+### Query History
+| Key | Action |
+|-----|--------|
+| `Ctrl+H` / `H` | Open query history |
+| `j` / `k` | Navigate history |
+| `Enter` | Load selected query into query input |
+| `r` | Re-run selected query |
+| `Esc` / `q` | Close history |
 
 ## Safety
 
@@ -106,6 +116,8 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 - Browse tables and data with vim-style navigation
 - Real-time search across all columns
 - Custom SQL queries with results displayed inline
+- Query execution duration in status bar
+- In-memory query history with edit/re-run actions
 - Insert, update, and delete rows from the data panel
 - Composite primary key support for update/delete
 - Read-only mode for safer browsing

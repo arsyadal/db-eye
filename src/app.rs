@@ -3,7 +3,11 @@ use crate::ui;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use ratatui::{Terminal, backend::Backend};
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf, time::Duration};
+use std::{
+    fs,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum DbTypeChoice {
@@ -153,6 +157,29 @@ pub enum Screen {
     CrudForm,
     ConfirmDelete,
     Help,
+    QueryHistory,
+}
+
+#[derive(Clone)]
+pub struct QueryHistoryEntry {
+    pub sql: String,
+    pub rows: Option<usize>,
+    pub duration_ms: u128,
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+impl QueryHistoryEntry {
+    pub fn status_label(&self) -> String {
+        if self.success {
+            match self.rows {
+                Some(rows) => format!("OK ({} rows)", rows),
+                None => "OK".to_string(),
+            }
+        } else {
+            "ERROR".to_string()
+        }
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -182,7 +209,11 @@ pub struct CrudStatement {
 impl CrudForm {
     pub fn build_sql(&self) -> String {
         let table_ident = if let Some(schema) = &self.schema {
-            format!("{}.{}", self.quote_ident(schema), self.quote_ident(&self.table))
+            format!(
+                "{}.{}",
+                self.quote_ident(schema),
+                self.quote_ident(&self.table)
+            )
         } else {
             self.quote_ident(&self.table)
         };
@@ -228,7 +259,11 @@ impl CrudForm {
 
     pub fn build_statement(&self) -> CrudStatement {
         let table_ident = if let Some(schema) = &self.schema {
-            format!("{}.{}", self.quote_ident(schema), self.quote_ident(&self.table))
+            format!(
+                "{}.{}",
+                self.quote_ident(schema),
+                self.quote_ident(&self.table)
+            )
         } else {
             self.quote_ident(&self.table)
         };
@@ -502,6 +537,8 @@ pub struct App {
     pub server_conn: Option<ServerConn>,
     pub query_input: String,
     pub search_input: String,
+    pub query_history: Vec<QueryHistoryEntry>,
+    pub history_index: usize,
     pub status: String,
     pub page_size: usize,
     pub read_only: bool,
@@ -529,6 +566,8 @@ impl App {
             server_conn: None,
             query_input: String::new(),
             search_input: String::new(),
+            query_history: vec![],
+            history_index: 0,
             status: status.into(),
             page_size: 100,
             read_only,
@@ -545,7 +584,9 @@ impl App {
         #[cfg(target_os = "windows")]
         let base = std::env::var("APPDATA").ok().map(PathBuf::from);
         #[cfg(not(target_os = "windows"))]
-        let base = std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".config"));
+        let base = std::env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(h).join(".config"));
 
         base.map(|b| b.join("db-eye").join("connections.json"))
     }
@@ -608,9 +649,9 @@ impl App {
 
     fn data_help(&self) -> &'static str {
         if self.read_only {
-            "READ-ONLY  |  j/k:nav  e:export  /:search  :::query  Esc:back"
+            "READ-ONLY  |  j/k:nav  e:export  /:search  :::query  Ctrl+H:history  Esc:back"
         } else {
-            "j/k:nav  i:insert  u:update  d:delete  e:export  /:search  :::query  Esc:back"
+            "j/k:nav  i:insert  u:update  d:delete  e:export  /:search  :::query  Ctrl+H:history  Esc:back"
         }
     }
 
@@ -652,6 +693,7 @@ impl App {
                         Screen::CrudForm => self.handle_crud_form(key.code).await,
                         Screen::ConfirmDelete => self.handle_confirm_delete(key.code).await,
                         Screen::Help => self.handle_help(key.code),
+                        Screen::QueryHistory => self.handle_query_history(key.code).await,
                     }
                 }
             }
@@ -823,11 +865,8 @@ impl App {
                     match tab.db.list_schemas().await {
                         Ok(schemas) => {
                             tab.schemas = schemas;
-                            tab.schema_index = tab
-                                .schemas
-                                .iter()
-                                .position(|s| s == "public")
-                                .unwrap_or(0);
+                            tab.schema_index =
+                                tab.schemas.iter().position(|s| s == "public").unwrap_or(0);
                             self.tabs.push(tab);
                             self.active_tab = self.tabs.len() - 1;
                             self.screen = Screen::Schemas;
@@ -864,7 +903,11 @@ impl App {
     async fn handle_connect(&mut self, key: KeyCode, modifiers: KeyModifiers) {
         if modifiers.contains(KeyModifiers::CONTROL) && key == KeyCode::Char('s') {
             let name = if self.db_type == DbTypeChoice::Sqlite {
-                self.sqlite_input.split('/').last().unwrap_or("SQLite").to_string()
+                self.sqlite_input
+                    .split('/')
+                    .last()
+                    .unwrap_or("SQLite")
+                    .to_string()
             } else {
                 format!("{}@{}", self.connect_form.user, self.connect_form.host)
             };
@@ -907,7 +950,10 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.focus == Focus::Saved {
                     if !self.saved_connections.is_empty() {
-                        self.saved_index = self.saved_index.checked_sub(1).unwrap_or(self.saved_connections.len().saturating_sub(1));
+                        self.saved_index = self
+                            .saved_index
+                            .checked_sub(1)
+                            .unwrap_or(self.saved_connections.len().saturating_sub(1));
                     }
                 } else if self.db_type != DbTypeChoice::Sqlite {
                     self.connect_form.prev_field();
@@ -916,7 +962,9 @@ impl App {
             KeyCode::Delete => {
                 if self.focus == Focus::Saved && !self.saved_connections.is_empty() {
                     self.saved_connections.remove(self.saved_index);
-                    self.saved_index = self.saved_index.min(self.saved_connections.len().saturating_sub(1));
+                    self.saved_index = self
+                        .saved_index
+                        .min(self.saved_connections.len().saturating_sub(1));
                     self.save_saved_connections();
                 }
             }
@@ -1025,6 +1073,12 @@ impl App {
                     }
                     return;
                 }
+                KeyCode::Char('h') => {
+                    self.history_index = 0;
+                    self.screen = Screen::QueryHistory;
+                    self.status = "Query history — j/k:nav  Enter:edit  r:run  Esc:close".into();
+                    return;
+                }
                 _ => {}
             }
         }
@@ -1033,6 +1087,12 @@ impl App {
         match key {
             KeyCode::Char('?') => {
                 self.screen = Screen::Help;
+                return;
+            }
+            KeyCode::Char('H') => {
+                self.history_index = 0;
+                self.screen = Screen::QueryHistory;
+                self.status = "Query history — j/k:nav  Enter:edit  r:run  Esc:close".into();
                 return;
             }
             KeyCode::Char('[') => {
@@ -1317,7 +1377,13 @@ impl App {
                 if let Some(tab) = self.current_tab_mut() {
                     if !tab.query_history.is_empty() {
                         let new_index = match tab.history_index {
-                            Some(idx) => if idx > 0 { idx - 1 } else { 0 },
+                            Some(idx) => {
+                                if idx > 0 {
+                                    idx - 1
+                                } else {
+                                    0
+                                }
+                            }
                             None => tab.query_history.len().saturating_sub(1),
                         };
                         tab.history_index = Some(new_index);
@@ -1359,40 +1425,7 @@ impl App {
                     self.screen = Screen::Main;
                     return;
                 }
-                if self.read_only && !DbClient::is_read_only_sql(&sql) {
-                    self.screen = Screen::Main;
-                    self.read_only_block();
-                    return;
-                }
-                if let Some(tab) = self.tabs.get_mut(self.active_tab) {
-                    // Save to history if different from last entry
-                    if tab.query_history.last() != Some(&sql) {
-                        tab.query_history.push(sql.clone());
-                    }
-                    tab.history_index = None;
-
-                    match tab.db.execute_query(&sql).await {
-                        Ok(result) => {
-                            let count = result.rows.len();
-                            tab.total_rows = count as i64;
-                            let msg = if count > 0 {
-                                format!("{} rows returned", count)
-                            } else {
-                                format!("{} rows affected", result.rows_affected)
-                            };
-                            tab.result = Some(result);
-                            tab.search_query.clear();
-                            tab.update_filter();
-                            tab.selected_row = 0;
-                            tab.row_offset = 0;
-                            tab.col_offset = 0;
-                            self.status = msg;
-                        }
-                        Err(e) => {
-                            self.status = format_db_error("Query", &e);
-                        }
-                    }
-                }
+                self.execute_current_query(sql).await;
                 self.screen = Screen::Main;
             }
             KeyCode::Esc => {
@@ -1400,6 +1433,97 @@ impl App {
                     tab.history_index = None;
                 }
                 self.screen = Screen::Main;
+            }
+            _ => {}
+        }
+    }
+
+    async fn execute_current_query(&mut self, sql: String) {
+        if self.read_only && !DbClient::is_read_only_sql(&sql) {
+            self.read_only_block();
+            return;
+        }
+
+        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            if tab.query_history.last() != Some(&sql) {
+                tab.query_history.push(sql.clone());
+            }
+            tab.history_index = None;
+
+            let started = Instant::now();
+            let mut history = QueryHistoryEntry {
+                sql,
+                rows: None,
+                duration_ms: 0,
+                success: false,
+                error: None,
+            };
+
+            match tab.db.execute_query(&history.sql).await {
+                Ok(result) => {
+                    let duration_ms = started.elapsed().as_millis();
+                    let count = result.rows.len();
+                    tab.total_rows = count as i64;
+                    let msg = if count > 0 {
+                        format!("{} rows returned", count)
+                    } else {
+                        format!("{} rows affected", result.rows_affected)
+                    };
+                    tab.result = Some(result);
+                    tab.search_query.clear();
+                    tab.update_filter();
+                    tab.selected_row = 0;
+                    tab.row_offset = 0;
+                    tab.col_offset = 0;
+
+                    history.rows = Some(count);
+                    history.duration_ms = duration_ms;
+                    history.success = true;
+                    self.status = format!("{} in {}", msg, format_duration_ms(duration_ms));
+                }
+                Err(e) => {
+                    let duration_ms = started.elapsed().as_millis();
+                    let error = format_db_error("Query", &e);
+                    history.duration_ms = duration_ms;
+                    history.error = Some(error.clone());
+                    self.status = error;
+                }
+            }
+            self.query_history.insert(0, history);
+            if self.query_history.len() > 100 {
+                self.query_history.truncate(100);
+            }
+        }
+    }
+
+    async fn handle_query_history(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Char('j') | KeyCode::Down => {
+                if self.history_index + 1 < self.query_history.len() {
+                    self.history_index += 1;
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                if self.history_index > 0 {
+                    self.history_index -= 1;
+                }
+            }
+            KeyCode::Enter => {
+                if let Some(entry) = self.query_history.get(self.history_index) {
+                    self.query_input = entry.sql.clone();
+                    self.screen = Screen::Query;
+                    self.status = "Editing query from history".into();
+                }
+            }
+            KeyCode::Char('r') => {
+                if let Some(entry) = self.query_history.get(self.history_index).cloned() {
+                    self.screen = Screen::Main;
+                    self.execute_current_query(entry.sql).await;
+                }
+            }
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.screen = Screen::Main;
+                self.status = self.table_help().into();
             }
             _ => {}
         }
@@ -1448,8 +1572,19 @@ impl App {
                 Some(r) => r.clone(),
                 None => return,
             };
-            let cols = tab.result.as_ref().map(|r| r.columns.clone()).unwrap_or_default();
-            (table, tab.current_schema().map(|s| s.to_string()), col_idx, tab.edit_buffer.clone(), row, cols)
+            let cols = tab
+                .result
+                .as_ref()
+                .map(|r| r.columns.clone())
+                .unwrap_or_default();
+            (
+                table,
+                tab.current_schema().map(|s| s.to_string()),
+                col_idx,
+                tab.edit_buffer.clone(),
+                row,
+                cols,
+            )
         };
 
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
@@ -1459,7 +1594,8 @@ impl App {
                         Some(c) => c,
                         None => return,
                     };
-                    let mut pk_columns: Vec<ColumnInfo> = col_info.iter().filter(|c| c.is_pk).cloned().collect();
+                    let mut pk_columns: Vec<ColumnInfo> =
+                        col_info.iter().filter(|c| c.is_pk).cloned().collect();
                     if pk_columns.is_empty() {
                         self.status = "Update requires a primary key".into();
                         tab.editing_cell = None;
@@ -1502,7 +1638,11 @@ impl App {
                         "UPDATE {} SET {} = {} WHERE {}",
                         table_ident,
                         quote_ident(col_name),
-                        if numbered_placeholders { "$1".to_string() } else { "?".to_string() },
+                        if numbered_placeholders {
+                            "$1".to_string()
+                        } else {
+                            "?".to_string()
+                        },
                         conditions.join(" AND ")
                     );
 
@@ -1510,14 +1650,32 @@ impl App {
                         Ok(_) => {
                             if let Some(res) = tab.result.as_mut() {
                                 // Find actual row in result by primary key (since display_rows might be filtered)
-                                let row_pk_values: Vec<String> = pk_columns.iter().map(|pk| {
-                                    columns.iter().position(|c| c == &pk.name).and_then(|idx| row_data.get(idx)).cloned().unwrap_or_default()
-                                }).collect();
+                                let row_pk_values: Vec<String> = pk_columns
+                                    .iter()
+                                    .map(|pk| {
+                                        columns
+                                            .iter()
+                                            .position(|c| c == &pk.name)
+                                            .and_then(|idx| row_data.get(idx))
+                                            .cloned()
+                                            .unwrap_or_default()
+                                    })
+                                    .collect();
 
                                 if let Some(target_row) = res.rows.iter_mut().find(|r| {
                                     pk_columns.iter().all(|pk| {
-                                        let idx = res.columns.iter().position(|c| c == &pk.name).unwrap_or(0);
-                                        r.get(idx) == row_pk_values.get(pk_columns.iter().position(|p| p.name == pk.name).unwrap_or(0))
+                                        let idx = res
+                                            .columns
+                                            .iter()
+                                            .position(|c| c == &pk.name)
+                                            .unwrap_or(0);
+                                        r.get(idx)
+                                            == row_pk_values.get(
+                                                pk_columns
+                                                    .iter()
+                                                    .position(|p| p.name == pk.name)
+                                                    .unwrap_or(0),
+                                            )
                                     })
                                 }) {
                                     if let Some(cell) = target_row.get_mut(col_idx) {
@@ -1759,7 +1917,11 @@ impl App {
                     } else {
                         quote_ident(&table)
                     };
-                    let sql = format!("DELETE FROM {} WHERE {}", table_ident, conditions.join(" AND "));
+                    let sql = format!(
+                        "DELETE FROM {} WHERE {}",
+                        table_ident,
+                        conditions.join(" AND ")
+                    );
                     let preview = row_data
                         .iter()
                         .take(3)
@@ -1901,7 +2063,12 @@ impl App {
                 Some(t) => t.clone(),
                 None => return,
             };
-            (table, tab.row_offset, self.page_size, tab.current_schema().map(|s| s.to_string()))
+            (
+                table,
+                tab.row_offset,
+                self.page_size,
+                tab.current_schema().map(|s| s.to_string()),
+            )
         };
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             match tab.db.count_rows(schema.as_deref(), &table).await {
@@ -1918,9 +2085,9 @@ impl App {
                     tab.search_query.clear();
                     tab.update_filter();
                     let actions = if self.read_only {
-                        "READ-ONLY  /:search  e:csv  ::sql  q:back"
+                        "READ-ONLY  /:search  e:csv  ::sql  Ctrl+H:history  q:back"
                     } else {
-                        "i:insert  u:update  d:delete  /:search  e:csv  ::sql  q:back"
+                        "i:insert  u:update  d:delete  /:search  e:csv  ::sql  Ctrl+H:history  q:back"
                     };
                     self.status = format!(
                         "{}  |  {} rows  |  Tab:focus  j/k:scroll  h/l:cols  {}",
@@ -1930,6 +2097,14 @@ impl App {
                 Err(e) => self.status = format_db_error("Loading table data", &e),
             }
         }
+    }
+}
+
+pub fn format_duration_ms(ms: u128) -> String {
+    if ms < 1_000 {
+        format!("{}ms", ms)
+    } else {
+        format!("{:.2}s", ms as f64 / 1_000.0)
     }
 }
 

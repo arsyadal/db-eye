@@ -1,7 +1,7 @@
-use sqlx::{AnyPool, Column, Row, any::AnyRow, error::ErrorKind};
 use futures::StreamExt;
+use sqlx::{AnyPool, Column, Row, any::AnyRow, error::ErrorKind};
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum DbType {
     Sqlite,
     Postgres,

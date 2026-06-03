@@ -1,4 +1,4 @@
-use crate::app::{App, ConnectForm, CrudMode, DbTypeChoice, Focus, Screen};
+use crate::app::{App, ConnectForm, CrudMode, DbTypeChoice, Focus, Screen, format_duration_ms};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -29,6 +29,10 @@ pub fn draw(f: &mut Frame, app: &App) {
         Screen::Help => {
             draw_main(f, app);
             draw_help_popup(f);
+        }
+        Screen::QueryHistory => {
+            draw_main(f, app);
+            draw_query_history_popup(f, app);
         }
     }
 }
@@ -567,10 +571,12 @@ fn draw_data_panel(f: &mut Frame, app: &App, area: Rect) {
                 }
             }
 
-            // Stateful Table positioning is complex to calculate exactly, 
+            // Stateful Table positioning is complex to calculate exactly,
             // but for simple cases where current row is visible:
             let y = area.y + 3 + edit_r.saturating_sub(state.offset()) as u16;
-            if y < area.y + area.height - 1 && x_offset + (tab.edit_buffer.len() as u16) < area.x + area.width - 1 {
+            if y < area.y + area.height - 1
+                && x_offset + (tab.edit_buffer.len() as u16) < area.x + area.width - 1
+            {
                 f.set_cursor_position((area.x + x_offset + tab.edit_buffer.len() as u16, y));
             }
         }
@@ -622,6 +628,85 @@ fn draw_query_popup(f: &mut Frame, app: &App) {
         area,
     );
     f.set_cursor_position((area.x + app.query_input.len() as u16 + 3, area.y + 1));
+}
+
+fn draw_query_history_popup(f: &mut Frame, app: &App) {
+    let area = centered_rect(85, 18, f.area());
+    f.render_widget(Clear, area);
+
+    if app.query_history.is_empty() {
+        f.render_widget(
+            Paragraph::new("\n  No query history yet. Run a query with ':' first.").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Query History — Esc: close "),
+            ),
+            area,
+        );
+        return;
+    }
+
+    let max_rows = area.height.saturating_sub(4) as usize;
+    let start = if app.history_index >= max_rows {
+        app.history_index + 1 - max_rows
+    } else {
+        0
+    };
+
+    let rows: Vec<Row> = app
+        .query_history
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(max_rows)
+        .map(|(i, entry)| {
+            let style = if i == app.history_index {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else if entry.success {
+                Style::default()
+            } else {
+                Style::default().fg(Color::Red)
+            };
+            Row::new(vec![
+                Cell::from(format!("#{}", i + 1)),
+                Cell::from(entry.status_label()),
+                Cell::from(format_duration_ms(entry.duration_ms)),
+                Cell::from(truncate_line(&entry.sql, 90)),
+            ])
+            .style(style)
+        })
+        .collect();
+
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(6),
+            Constraint::Length(16),
+            Constraint::Length(10),
+            Constraint::Min(20),
+        ],
+    )
+    .header(
+        Row::new(vec!["No", "Status", "Duration", "SQL"])
+            .style(Style::default().add_modifier(Modifier::BOLD))
+            .bottom_margin(1),
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Query History — j/k:nav  Enter:edit  r:run  Esc:close "),
+    );
+
+    f.render_widget(table, area);
+}
+
+fn truncate_line(value: &str, max: usize) -> String {
+    if value.chars().count() <= max {
+        return value.to_string();
+    }
+    let mut truncated: String = value.chars().take(max.saturating_sub(1)).collect();
+    truncated.push('…');
+    truncated
 }
 
 fn draw_search_bar(f: &mut Frame, app: &App) {
@@ -850,16 +935,23 @@ fn draw_help_popup(f: &mut Frame) {
     f.render_widget(Clear, area);
 
     let help_text = vec![
-        Line::from(vec![
-            Span::styled(" DB-EYE Keybindings ", Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)),
-        ]),
+        Line::from(vec![Span::styled(
+            " DB-EYE Keybindings ",
+            Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED),
+        )]),
         Line::from(""),
-        Line::from(Span::styled(" General ", Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))),
+        Line::from(Span::styled(
+            " General ",
+            Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        )),
         Line::from(" Ctrl+C      Quit application"),
         Line::from(" ?          Show/hide this help screen"),
         Line::from(" Esc        Go back / Cancel"),
         Line::from(""),
-        Line::from(Span::styled(" Connection & Navigation ", Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))),
+        Line::from(Span::styled(
+            " Connection & Navigation ",
+            Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        )),
         Line::from(" Ctrl+T      New connection (Connect screen)"),
         Line::from(" Ctrl+S      Save connection (Connect screen)"),
         Line::from(" Tab        Switch focus (Inputs / Saved list)"),
@@ -870,7 +962,10 @@ fn draw_help_popup(f: &mut Frame) {
         Line::from(" j / k      Navigate lists (Tables, Databases, Schemas, Saved)"),
         Line::from(" Enter      Select / Open / Load connection"),
         Line::from(""),
-        Line::from(Span::styled(" Data Panel ", Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))),
+        Line::from(Span::styled(
+            " Data Panel ",
+            Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        )),
         Line::from(" j / k      Scroll rows up/down"),
         Line::from(" h / l      Scroll columns left/right"),
         Line::from(" Enter / e  Inline cell edit (Confirm with Enter)"),
@@ -879,7 +974,10 @@ fn draw_help_popup(f: &mut Frame) {
         Line::from(" i / u / d  Insert / Update / Delete row"),
         Line::from(" v          Export current view to CSV"),
         Line::from(""),
-        Line::from(Span::styled(" Form / Dialogs ", Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED))),
+        Line::from(Span::styled(
+            " Form / Dialogs ",
+            Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        )),
         Line::from(" Tab        Next field"),
         Line::from(" Enter      Confirm / Save"),
         Line::from(" y / n      Confirm Delete (Yes/No)"),
