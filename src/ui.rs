@@ -558,27 +558,29 @@ fn draw_data_panel(f: &mut Frame, app: &App, area: Rect) {
     );
 
     // Cursor for inline edit
-    if let Some((edit_r, edit_c)) = tab.editing_cell {
-        if focused && edit_c >= col_offset && edit_c < col_offset + visible {
-            let mut x_offset: u16 = 1; // Left border
-            for (i, constraint) in constraints.iter().enumerate() {
-                if col_offset + i == edit_c {
-                    break;
-                }
-                match constraint {
-                    Constraint::Length(l) => x_offset += *l + 2, // +2 for column_spacing
-                    _ => x_offset += 20,
-                }
+    if let Some((edit_r, edit_c)) = tab.editing_cell
+        && focused
+        && edit_c >= col_offset
+        && edit_c < col_offset + visible
+    {
+        let mut x_offset: u16 = 1; // Left border
+        for (i, constraint) in constraints.iter().enumerate() {
+            if col_offset + i == edit_c {
+                break;
             }
+            match constraint {
+                Constraint::Length(l) => x_offset += *l + 2, // +2 for column_spacing
+                _ => x_offset += 20,
+            }
+        }
 
-            // Stateful Table positioning is complex to calculate exactly,
-            // but for simple cases where current row is visible:
-            let y = area.y + 3 + edit_r.saturating_sub(state.offset()) as u16;
-            if y < area.y + area.height - 1
-                && x_offset + (tab.edit_buffer.len() as u16) < area.x + area.width - 1
-            {
-                f.set_cursor_position((area.x + x_offset + tab.edit_buffer.len() as u16, y));
-            }
+        // Stateful Table positioning is complex to calculate exactly,
+        // but for simple cases where current row is visible:
+        let y = area.y + 3 + edit_r.saturating_sub(state.offset()) as u16;
+        if y < area.y + area.height - 1
+            && x_offset + (tab.edit_buffer.len() as u16) < area.x + area.width - 1
+        {
+            f.set_cursor_position((area.x + x_offset + tab.edit_buffer.len() as u16, y));
         }
     }
 }
@@ -600,7 +602,7 @@ fn auto_col_widths(
             .map(|c| c.len())
             .max()
             .unwrap_or(0);
-        let w = (header_w.max(max_cell_w).max(4).min(28) + 2) as u16;
+        let w = (header_w.max(max_cell_w).clamp(4, 28) + 2) as u16;
         if used + w as usize + 1 > available_w {
             break;
         }
@@ -837,11 +839,7 @@ fn draw_crud_form(f: &mut Frame, app: &App) {
 
     // FK hint (valid values for active FK field)
     if hint_height > 0 {
-        let vals_text = active_hints
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("  |  ");
+        let vals_text = active_hints.to_vec().join("  |  ");
         f.render_widget(
             Paragraph::new(format!("  {}", vals_text)).block(
                 Block::default()

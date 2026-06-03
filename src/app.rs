@@ -499,7 +499,7 @@ impl Tab {
     pub fn short_name(&self) -> String {
         self.path
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or(&self.path)
             .to_string()
     }
@@ -507,7 +507,7 @@ impl Tab {
     pub fn export_csv(&self) -> Result<String, std::io::Error> {
         let result = match &self.result {
             Some(r) => r,
-            None => return Err(std::io::Error::new(std::io::ErrorKind::Other, "No data")),
+            None => return Err(std::io::Error::other("No data")),
         };
         let rows = self.display_rows();
         let safe_name = self.path.replace(['.', '/', '@', ':'], "_");
@@ -606,12 +606,11 @@ impl App {
     }
 
     fn load_saved_connections(&mut self) {
-        if let Some(path) = Self::config_path() {
-            if let Ok(content) = fs::read_to_string(path) {
-                if let Ok(saved) = serde_json::from_str::<Vec<SavedConnection>>(&content) {
-                    self.saved_connections = saved;
-                }
-            }
+        if let Some(path) = Self::config_path()
+            && let Ok(content) = fs::read_to_string(path)
+            && let Ok(saved) = serde_json::from_str::<Vec<SavedConnection>>(&content)
+        {
+            self.saved_connections = saved;
         }
     }
 
@@ -690,25 +689,23 @@ impl App {
     {
         loop {
             terminal.draw(|f| ui::draw(f, self))?;
-            if event::poll(Duration::from_millis(200))? {
-                if let Event::Key(key) = event::read()? {
-                    if key.code == KeyCode::Char('c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL)
-                    {
-                        break;
-                    }
-                    match self.screen {
-                        Screen::Connect => self.handle_connect(key.code, key.modifiers).await,
-                        Screen::Databases => self.handle_databases(key.code).await,
-                        Screen::Schemas => self.handle_schemas(key.code).await,
-                        Screen::Main => self.handle_main(key.code, key.modifiers).await,
-                        Screen::Query => self.handle_query(key.code).await,
-                        Screen::Search => self.handle_search(key.code),
-                        Screen::CrudForm => self.handle_crud_form(key.code).await,
-                        Screen::ConfirmDelete => self.handle_confirm_delete(key.code).await,
-                        Screen::Help => self.handle_help(key.code),
-                        Screen::QueryHistory => self.handle_query_history(key.code).await,
-                    }
+            if event::poll(Duration::from_millis(200))?
+                && let Event::Key(key) = event::read()?
+            {
+                if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    break;
+                }
+                match self.screen {
+                    Screen::Connect => self.handle_connect(key.code, key.modifiers).await,
+                    Screen::Databases => self.handle_databases(key.code).await,
+                    Screen::Schemas => self.handle_schemas(key.code).await,
+                    Screen::Main => self.handle_main(key.code, key.modifiers).await,
+                    Screen::Query => self.handle_query(key.code).await,
+                    Screen::Search => self.handle_search(key.code),
+                    Screen::CrudForm => self.handle_crud_form(key.code).await,
+                    Screen::ConfirmDelete => self.handle_confirm_delete(key.code).await,
+                    Screen::Help => self.handle_help(key.code),
+                    Screen::QueryHistory => self.handle_query_history(key.code).await,
                 }
             }
         }
@@ -727,17 +724,17 @@ impl App {
     async fn handle_schemas(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') | KeyCode::Down => {
-                if let Some(tab) = self.current_tab_mut() {
-                    if tab.schema_index + 1 < tab.schemas.len() {
-                        tab.schema_index += 1;
-                    }
+                if let Some(tab) = self.current_tab_mut()
+                    && tab.schema_index + 1 < tab.schemas.len()
+                {
+                    tab.schema_index += 1;
                 }
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                if let Some(tab) = self.current_tab_mut() {
-                    if tab.schema_index > 0 {
-                        tab.schema_index -= 1;
-                    }
+                if let Some(tab) = self.current_tab_mut()
+                    && tab.schema_index > 0
+                {
+                    tab.schema_index -= 1;
                 }
             }
             KeyCode::Enter => {
@@ -919,7 +916,7 @@ impl App {
             let name = if self.db_type == DbTypeChoice::Sqlite {
                 self.sqlite_input
                     .split('/')
-                    .last()
+                    .next_back()
                     .unwrap_or("SQLite")
                     .to_string()
             } else {
@@ -931,19 +928,15 @@ impl App {
         }
 
         match key {
-            KeyCode::Left => {
-                if self.focus != Focus::Saved {
-                    self.db_type = self.db_type.prev();
-                    self.connect_form = ConnectForm::new(&self.db_type);
-                    self.status = self.connect_help().into();
-                }
+            KeyCode::Left if self.focus != Focus::Saved => {
+                self.db_type = self.db_type.prev();
+                self.connect_form = ConnectForm::new(&self.db_type);
+                self.status = self.connect_help().into();
             }
-            KeyCode::Right => {
-                if self.focus != Focus::Saved {
-                    self.db_type = self.db_type.next();
-                    self.connect_form = ConnectForm::new(&self.db_type);
-                    self.status = self.connect_help().into();
-                }
+            KeyCode::Right if self.focus != Focus::Saved => {
+                self.db_type = self.db_type.next();
+                self.connect_form = ConnectForm::new(&self.db_type);
+                self.status = self.connect_help().into();
             }
             KeyCode::Tab => {
                 if self.focus == Focus::Saved {
@@ -973,37 +966,27 @@ impl App {
                     self.connect_form.prev_field();
                 }
             }
-            KeyCode::Delete => {
-                if self.focus == Focus::Saved && !self.saved_connections.is_empty() {
-                    self.saved_connections.remove(self.saved_index);
-                    self.saved_index = self
-                        .saved_index
-                        .min(self.saved_connections.len().saturating_sub(1));
-                    self.save_saved_connections();
-                }
+            KeyCode::Delete if self.focus == Focus::Saved && !self.saved_connections.is_empty() => {
+                self.saved_connections.remove(self.saved_index);
+                self.saved_index = self
+                    .saved_index
+                    .min(self.saved_connections.len().saturating_sub(1));
+                self.save_saved_connections();
             }
-            KeyCode::Char(c) => {
-                if self.focus != Focus::Saved {
-                    match self.db_type {
-                        DbTypeChoice::Sqlite => self.sqlite_input.push(c),
-                        _ => {
-                            self.connect_form.active_value_mut().push(c);
-                        }
-                    }
+            KeyCode::Char(c) if self.focus != Focus::Saved => match self.db_type {
+                DbTypeChoice::Sqlite => self.sqlite_input.push(c),
+                _ => {
+                    self.connect_form.active_value_mut().push(c);
                 }
-            }
-            KeyCode::Backspace => {
-                if self.focus != Focus::Saved {
-                    match self.db_type {
-                        DbTypeChoice::Sqlite => {
-                            self.sqlite_input.pop();
-                        }
-                        _ => {
-                            self.connect_form.active_value_mut().pop();
-                        }
-                    }
+            },
+            KeyCode::Backspace if self.focus != Focus::Saved => match self.db_type {
+                DbTypeChoice::Sqlite => {
+                    self.sqlite_input.pop();
                 }
-            }
+                _ => {
+                    self.connect_form.active_value_mut().pop();
+                }
+            },
             KeyCode::Enter => {
                 if self.focus == Focus::Saved && !self.saved_connections.is_empty() {
                     let saved = &self.saved_connections[self.saved_index];
@@ -1030,10 +1013,8 @@ impl App {
                     }
                 }
             }
-            KeyCode::Esc => {
-                if !self.tabs.is_empty() {
-                    self.screen = Screen::Main;
-                }
+            KeyCode::Esc if !self.tabs.is_empty() => {
+                self.screen = Screen::Main;
             }
             _ => {}
         }
@@ -1042,17 +1023,17 @@ impl App {
     async fn handle_databases(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') | KeyCode::Down => {
-                if let Some(ref mut sc) = self.server_conn {
-                    if sc.db_index + 1 < sc.databases.len() {
-                        sc.db_index += 1;
-                    }
+                if let Some(ref mut sc) = self.server_conn
+                    && sc.db_index + 1 < sc.databases.len()
+                {
+                    sc.db_index += 1;
                 }
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                if let Some(ref mut sc) = self.server_conn {
-                    if sc.db_index > 0 {
-                        sc.db_index -= 1;
-                    }
+                if let Some(ref mut sc) = self.server_conn
+                    && sc.db_index > 0
+                {
+                    sc.db_index -= 1;
                 }
             }
             KeyCode::Enter => {
@@ -1149,17 +1130,17 @@ impl App {
     async fn handle_tables_focus(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('j') | KeyCode::Down => {
-                if let Some(tab) = self.current_tab_mut() {
-                    if tab.table_index + 1 < tab.tables.len() {
-                        tab.table_index += 1;
-                    }
+                if let Some(tab) = self.current_tab_mut()
+                    && tab.table_index + 1 < tab.tables.len()
+                {
+                    tab.table_index += 1;
                 }
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                if let Some(tab) = self.current_tab_mut() {
-                    if tab.table_index > 0 {
-                        tab.table_index -= 1;
-                    }
+                if let Some(tab) = self.current_tab_mut()
+                    && tab.table_index > 0
+                {
+                    tab.table_index -= 1;
                 }
             }
             KeyCode::Enter => {
@@ -1288,10 +1269,10 @@ impl App {
                     if let Some(t) = self.current_tab_mut() {
                         t.selected_row = t.display_rows().len().saturating_sub(1);
                     }
-                } else if let Some(t) = self.current_tab_mut() {
-                    if t.selected_row > 0 {
-                        t.selected_row -= 1;
-                    }
+                } else if let Some(t) = self.current_tab_mut()
+                    && t.selected_row > 0
+                {
+                    t.selected_row -= 1;
                 }
             }
             KeyCode::Char('l') | KeyCode::Right => {
@@ -1300,10 +1281,10 @@ impl App {
                 }
             }
             KeyCode::Char('h') | KeyCode::Left => {
-                if let Some(t) = self.current_tab_mut() {
-                    if t.col_offset > 0 {
-                        t.col_offset -= 1;
-                    }
+                if let Some(t) = self.current_tab_mut()
+                    && t.col_offset > 0
+                {
+                    t.col_offset -= 1;
                 }
             }
             KeyCode::Enter | KeyCode::Char('e') => {
@@ -1322,11 +1303,11 @@ impl App {
                     None
                 };
 
-                if let Some((row, col, val)) = cell_data {
-                    if let Some(tab) = self.current_tab_mut() {
-                        tab.editing_cell = Some((row, col));
-                        tab.edit_buffer = val;
-                    }
+                if let Some((row, col, val)) = cell_data
+                    && let Some(tab) = self.current_tab_mut()
+                {
+                    tab.editing_cell = Some((row, col));
+                    tab.edit_buffer = val;
                 }
             }
             KeyCode::Char(':') => {
@@ -1388,36 +1369,36 @@ impl App {
     async fn handle_query(&mut self, key: KeyCode) {
         match key {
             KeyCode::Up => {
-                if let Some(tab) = self.current_tab_mut() {
-                    if !tab.query_history.is_empty() {
-                        let new_index = match tab.history_index {
-                            Some(idx) => {
-                                if idx > 0 {
-                                    idx - 1
-                                } else {
-                                    0
-                                }
+                if let Some(tab) = self.current_tab_mut()
+                    && !tab.query_history.is_empty()
+                {
+                    let new_index = match tab.history_index {
+                        Some(idx) => {
+                            if idx > 0 {
+                                idx - 1
+                            } else {
+                                0
                             }
-                            None => tab.query_history.len().saturating_sub(1),
-                        };
-                        tab.history_index = Some(new_index);
-                        if let Some(history_sql) = tab.query_history.get(new_index) {
-                            self.query_input = history_sql.clone();
                         }
+                        None => tab.query_history.len().saturating_sub(1),
+                    };
+                    tab.history_index = Some(new_index);
+                    if let Some(history_sql) = tab.query_history.get(new_index) {
+                        self.query_input = history_sql.clone();
                     }
                 }
             }
             KeyCode::Down => {
-                if let Some(tab) = self.current_tab_mut() {
-                    if let Some(idx) = tab.history_index {
-                        if idx + 1 < tab.query_history.len() {
-                            let new_index = idx + 1;
-                            tab.history_index = Some(new_index);
-                            self.query_input = tab.query_history[new_index].clone();
-                        } else {
-                            tab.history_index = None;
-                            self.query_input.clear();
-                        }
+                if let Some(tab) = self.current_tab_mut()
+                    && let Some(idx) = tab.history_index
+                {
+                    if idx + 1 < tab.query_history.len() {
+                        let new_index = idx + 1;
+                        tab.history_index = Some(new_index);
+                        self.query_input = tab.query_history[new_index].clone();
+                    } else {
+                        tab.history_index = None;
+                        self.query_input.clear();
                     }
                 }
             }
@@ -1512,15 +1493,13 @@ impl App {
 
     async fn handle_query_history(&mut self, key: KeyCode) {
         match key {
-            KeyCode::Char('j') | KeyCode::Down => {
-                if self.history_index + 1 < self.query_history.len() {
-                    self.history_index += 1;
-                }
+            KeyCode::Char('j') | KeyCode::Down
+                if self.history_index + 1 < self.query_history.len() =>
+            {
+                self.history_index += 1;
             }
-            KeyCode::Char('k') | KeyCode::Up => {
-                if self.history_index > 0 {
-                    self.history_index -= 1;
-                }
+            KeyCode::Char('k') | KeyCode::Up if self.history_index > 0 => {
+                self.history_index -= 1;
             }
             KeyCode::Enter => {
                 if let Some(entry) = self.query_history.get(self.history_index) {
@@ -1624,12 +1603,12 @@ impl App {
                     };
                     let numbered_placeholders = tab.db.uses_numbered_placeholders();
 
-                    if let Some(col) = col_info.iter().find(|c| c.name == col_name.as_str()) {
-                        if let Err(msg) = col.validate_input(&new_val) {
-                            self.status = msg;
-                            tab.editing_cell = None;
-                            return;
-                        }
+                    if let Some(col) = col_info.iter().find(|c| c.name == col_name.as_str())
+                        && let Err(msg) = col.validate_input(&new_val)
+                    {
+                        self.status = msg;
+                        tab.editing_cell = None;
+                        return;
                     }
 
                     let mut values = vec![CrudForm::form_value(&new_val)];
@@ -1699,10 +1678,9 @@ impl App {
                                                     .unwrap_or(0),
                                             )
                                     })
-                                }) {
-                                    if let Some(cell) = target_row.get_mut(col_idx) {
-                                        *cell = new_val;
-                                    }
+                                }) && let Some(cell) = target_row.get_mut(col_idx)
+                                {
+                                    *cell = new_val;
                                 }
                             }
                             tab.update_filter();
@@ -1987,17 +1965,17 @@ impl App {
                 }
             }
             KeyCode::Char(c) => {
-                if let Some(ref mut form) = self.crud_form {
-                    if let Some(value) = form.values.get_mut(form.active_field) {
-                        value.push(c);
-                    }
+                if let Some(ref mut form) = self.crud_form
+                    && let Some(value) = form.values.get_mut(form.active_field)
+                {
+                    value.push(c);
                 }
             }
             KeyCode::Backspace => {
-                if let Some(ref mut form) = self.crud_form {
-                    if let Some(value) = form.values.get_mut(form.active_field) {
-                        value.pop();
-                    }
+                if let Some(ref mut form) = self.crud_form
+                    && let Some(value) = form.values.get_mut(form.active_field)
+                {
+                    value.pop();
                 }
             }
             KeyCode::Enter => {
@@ -2010,31 +1988,31 @@ impl App {
                     return;
                 }
                 let statement = self.crud_form.as_ref().map(|f| f.build_statement());
-                if let Some(statement) = statement {
-                    if let Some(tab) = self.tabs.get_mut(self.active_tab) {
-                        match tab
-                            .db
-                            .execute_write_with_values(&statement.sql, &statement.values)
-                            .await
-                        {
-                            Ok(rows) => {
-                                let mode = self.crud_form.as_ref().map(|f| f.mode.clone());
-                                let msg = match mode {
-                                    Some(CrudMode::Insert) => format!("{} row inserted", rows),
-                                    _ => format!("{} row updated", rows),
-                                };
-                                self.crud_form = None;
-                                self.screen = Screen::Main;
-                                self.load_table_data().await;
-                                self.status = msg;
-                            }
-                            Err(e) => {
-                                let action = match self.crud_form.as_ref().map(|f| f.mode.clone()) {
-                                    Some(CrudMode::Insert) => "Insert",
-                                    _ => "Update",
-                                };
-                                self.status = format_db_error(action, &e);
-                            }
+                if let Some(statement) = statement
+                    && let Some(tab) = self.tabs.get_mut(self.active_tab)
+                {
+                    match tab
+                        .db
+                        .execute_write_with_values(&statement.sql, &statement.values)
+                        .await
+                    {
+                        Ok(rows) => {
+                            let mode = self.crud_form.as_ref().map(|f| f.mode.clone());
+                            let msg = match mode {
+                                Some(CrudMode::Insert) => format!("{} row inserted", rows),
+                                _ => format!("{} row updated", rows),
+                            };
+                            self.crud_form = None;
+                            self.screen = Screen::Main;
+                            self.load_table_data().await;
+                            self.status = msg;
+                        }
+                        Err(e) => {
+                            let action = match self.crud_form.as_ref().map(|f| f.mode.clone()) {
+                                Some(CrudMode::Insert) => "Insert",
+                                _ => "Update",
+                            };
+                            self.status = format_db_error(action, &e);
                         }
                     }
                 }
@@ -2061,21 +2039,21 @@ impl App {
                     .delete_confirm
                     .as_ref()
                     .map(|d| (d.sql.clone(), d.values.clone()));
-                if let Some((sql, values)) = statement {
-                    if let Some(tab) = self.tabs.get_mut(self.active_tab) {
-                        match tab.db.execute_write_with_values(&sql, &values).await {
-                            Ok(rows) => {
-                                let msg = format!("{} row deleted", rows);
-                                self.delete_confirm = None;
-                                self.screen = Screen::Main;
-                                self.load_table_data().await;
-                                self.status = msg;
-                            }
-                            Err(e) => {
-                                self.status = format_db_error("Delete", &e);
-                                self.delete_confirm = None;
-                                self.screen = Screen::Main;
-                            }
+                if let Some((sql, values)) = statement
+                    && let Some(tab) = self.tabs.get_mut(self.active_tab)
+                {
+                    match tab.db.execute_write_with_values(&sql, &values).await {
+                        Ok(rows) => {
+                            let msg = format!("{} row deleted", rows);
+                            self.delete_confirm = None;
+                            self.screen = Screen::Main;
+                            self.load_table_data().await;
+                            self.status = msg;
+                        }
+                        Err(e) => {
+                            self.status = format_db_error("Delete", &e);
+                            self.delete_confirm = None;
+                            self.screen = Screen::Main;
                         }
                     }
                 }

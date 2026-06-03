@@ -243,7 +243,7 @@ impl DbClient {
             offset
         );
         let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
-        let data = rows.iter().map(|r| row_to_strings(r)).collect();
+        let data = rows.iter().map(row_to_strings).collect();
         Ok(QueryResult {
             columns,
             rows: data,
@@ -288,7 +288,7 @@ impl DbClient {
         if self.db_type == DbType::Postgres {
             // Try native decode; fall back to text-cast subquery on type error.
             if row_to_strings_checked(&rows[0]).is_ok() {
-                let data = rows.iter().map(|r| row_to_strings(r)).collect();
+                let data = rows.iter().map(row_to_strings).collect();
                 return Ok(QueryResult {
                     columns,
                     rows: data,
@@ -303,7 +303,7 @@ impl DbClient {
                 .join(", ");
             let cast_sql = format!("SELECT {} FROM ({}) __db_eye_q", select, sql);
             let rows2 = sqlx::query(&cast_sql).fetch_all(&self.pool).await?;
-            let data = rows2.iter().map(|r| row_to_strings(r)).collect();
+            let data = rows2.iter().map(row_to_strings).collect();
             return Ok(QueryResult {
                 columns,
                 rows: data,
@@ -311,7 +311,7 @@ impl DbClient {
             });
         }
 
-        let data = rows.iter().map(|r| row_to_strings(r)).collect();
+        let data = rows.iter().map(row_to_strings).collect();
         Ok(QueryResult {
             columns,
             rows: data,
