@@ -177,6 +177,7 @@ fn draw_connect_server(f: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(3), // port
             Constraint::Length(3), // user
             Constraint::Length(3), // pass
+            Constraint::Length(3), // connection URL
             Constraint::Length(3), // status
             Constraint::Min(0),
         ])
@@ -225,17 +226,40 @@ fn draw_connect_server(f: &mut Frame, app: &App, area: Rect) {
         );
     }
 
+    let url_active = form.active == 4 && app.focus != Focus::Saved;
+    let url_border_style = if url_active {
+        Style::default().add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    f.render_widget(
+        Paragraph::new(app.connection_url_input.as_str()).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Connection URL (optional) ")
+                .border_style(url_border_style),
+        ),
+        chunks[7],
+    );
+
     f.render_widget(
         Paragraph::new(app.status.as_str())
             .block(Block::default().borders(Borders::ALL).title(" Status ")),
-        chunks[7],
+        chunks[8],
     );
 
     // Cursor on active field
     if app.focus != Focus::Saved {
-        let active_chunk = field_chunks[form.active];
-        let active_len = values[form.active].len();
-        f.set_cursor_position((active_chunk.x + active_len as u16 + 1, active_chunk.y + 1));
+        if form.active == 4 {
+            f.set_cursor_position((
+                chunks[7].x + app.connection_url_input.len() as u16 + 1,
+                chunks[7].y + 1,
+            ));
+        } else {
+            let active_chunk = field_chunks[form.active];
+            let active_len = values[form.active].len();
+            f.set_cursor_position((active_chunk.x + active_len as u16 + 1, active_chunk.y + 1));
+        }
     }
 }
 

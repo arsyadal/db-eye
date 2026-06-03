@@ -40,6 +40,11 @@ db-eye
 
 **PostgreSQL / MySQL** — fill Host, Port, User, Password → Enter → pick database from list.
 
+Or paste a full connection URL in **Connection URL (optional)** and press Enter to connect directly:
+
+- `postgres://user:pass@host:5432/dbname`
+- `mysql://user:pass@host:3306/dbname`
+
 ## Navigation
 
 ### Global
@@ -128,6 +133,7 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 - Foreign-key value hints in insert/update forms
 - Export query results to CSV
 - Multiple simultaneous DB connections (tabs)
+- PostgreSQL/MySQL: connect via form flow or full connection URL
 - PostgreSQL: connect to server → pick database from list
 - Auto column width fitting
 - Monochrome TUI — works in any terminal

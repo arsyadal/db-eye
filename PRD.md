@@ -123,7 +123,7 @@ Target dokumen ini adalah daftar fitur yang perlu diimplementasikan atau bisa di
 
 - Saved connections/config file.
 - Password via environment variable atau prompt secure.
-- Connection string input manual.
+- Connection string input manual. ✅ initial implementation
 - SSH tunnel support.
 - TLS options untuk PostgreSQL/MySQL.
 - Recent connections list.

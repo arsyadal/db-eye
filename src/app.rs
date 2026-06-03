@@ -97,11 +97,11 @@ impl ConnectForm {
     }
 
     pub fn next_field(&mut self) {
-        self.active = (self.active + 1) % 4;
+        self.active = (self.active + 1) % 5;
     }
 
     pub fn prev_field(&mut self) {
-        self.active = self.active.checked_sub(1).unwrap_or(3);
+        self.active = self.active.checked_sub(1).unwrap_or(4);
     }
 
     pub fn server_url(&self, db_type: &DbTypeChoice) -> String {
@@ -548,6 +548,7 @@ pub struct App {
     pub sqlite_input: String,
     pub connect_form: ConnectForm,
     pub db_type: DbTypeChoice,
+    pub connection_url_input: String,
     pub server_conn: Option<ServerConn>,
     pub query_input: String,
     pub search_input: String,
@@ -577,6 +578,7 @@ impl App {
             sqlite_input: String::new(),
             connect_form: ConnectForm::new(&DbTypeChoice::Postgres),
             db_type: DbTypeChoice::Sqlite,
+            connection_url_input: String::new(),
             server_conn: None,
             query_input: String::new(),
             search_input: String::new(),
@@ -654,9 +656,9 @@ impl App {
 
     fn connect_help(&self) -> &'static str {
         if self.read_only {
-            "READ-ONLY  |  ←/→: switch DB type  Enter: connect"
+            "READ-ONLY  |  ←/→: switch DB type  Enter: connect  URL optional"
         } else {
-            "←/→: switch DB type  Enter: connect"
+            "←/→: switch DB type  Enter: connect  URL optional"
         }
     }
 
@@ -851,6 +853,66 @@ impl App {
         }
     }
 
+    async fn connect_to_url(&mut self, url: String) {
+        let display = Self::display_connection_url(&url);
+        self.status = format!("Opening {}...", display);
+        match DbClient::connect(&url).await {
+            Ok(client) => {
+                let mut tab = Tab::new(display.clone(), client);
+
+                if tab.db.db_type == crate::db::DbType::Postgres {
+                    match tab.db.list_schemas().await {
+                        Ok(schemas) => {
+                            tab.schemas = schemas;
+                            tab.schema_index =
+                                tab.schemas.iter().position(|s| s == "public").unwrap_or(0);
+                            self.tabs.push(tab);
+                            self.active_tab = self.tabs.len() - 1;
+                            self.screen = Screen::Schemas;
+                            self.status = "j/k: navigate  Enter: select schema  Esc: back".into();
+                            return;
+                        }
+                        Err(e) => {
+                            self.status = format_db_error("Listing schemas", &e);
+                            return;
+                        }
+                    }
+                }
+
+                match tab.db.list_tables(None).await {
+                    Ok(tables) => tab.tables = tables,
+                    Err(e) => {
+                        self.status = format_db_error("Loading tables", &e);
+                        return;
+                    }
+                }
+                self.tabs.push(tab);
+                self.active_tab = self.tabs.len() - 1;
+                self.screen = Screen::Main;
+                self.focus = Focus::Tables;
+                self.server_conn = None;
+                self.status = format!("Connected: {}  |  {}", display, self.table_help());
+            }
+            Err(e) => {
+                self.status = format_db_error("Connection URL", &e);
+            }
+        }
+    }
+
+    fn display_connection_url(url: &str) -> String {
+        let Some((scheme, rest)) = url.split_once("://") else {
+            return url.to_string();
+        };
+        let Some((userinfo, host_part)) = rest.split_once('@') else {
+            return url.to_string();
+        };
+        let masked_userinfo = userinfo
+            .split_once(':')
+            .map(|(user, _)| format!("{}:***", user))
+            .unwrap_or_else(|| userinfo.to_string());
+        format!("{}://{}@{}", scheme, masked_userinfo, host_part)
+    }
+
     async fn connect_to_selected_db(&mut self) {
         let (db_name, url, display, sc_form, sc_db_type) = {
             let sc = match self.server_conn.as_ref() {
@@ -931,11 +993,13 @@ impl App {
             KeyCode::Left if self.focus != Focus::Saved => {
                 self.db_type = self.db_type.prev();
                 self.connect_form = ConnectForm::new(&self.db_type);
+                self.connection_url_input.clear();
                 self.status = self.connect_help().into();
             }
             KeyCode::Right if self.focus != Focus::Saved => {
                 self.db_type = self.db_type.next();
                 self.connect_form = ConnectForm::new(&self.db_type);
+                self.connection_url_input.clear();
                 self.status = self.connect_help().into();
             }
             KeyCode::Tab => {
@@ -975,6 +1039,7 @@ impl App {
             }
             KeyCode::Char(c) if self.focus != Focus::Saved => match self.db_type {
                 DbTypeChoice::Sqlite => self.sqlite_input.push(c),
+                _ if self.connect_form.active == 4 => self.connection_url_input.push(c),
                 _ => {
                     self.connect_form.active_value_mut().push(c);
                 }
@@ -982,6 +1047,9 @@ impl App {
             KeyCode::Backspace if self.focus != Focus::Saved => match self.db_type {
                 DbTypeChoice::Sqlite => {
                     self.sqlite_input.pop();
+                }
+                _ if self.connect_form.active == 4 => {
+                    self.connection_url_input.pop();
                 }
                 _ => {
                     self.connect_form.active_value_mut().pop();
@@ -996,6 +1064,7 @@ impl App {
                     } else {
                         self.connect_form = saved.form.clone();
                         self.connect_form.active = 3; // Focus Password
+                        self.connection_url_input.clear();
                     }
                     self.focus = Focus::Tables;
                     self.status = "Connection loaded. Enter password if needed.".into();
@@ -1008,7 +1077,12 @@ impl App {
                             }
                         }
                         _ => {
-                            self.connect_to_server().await;
+                            let url = self.connection_url_input.trim().to_string();
+                            if url.is_empty() {
+                                self.connect_to_server().await;
+                            } else {
+                                self.connect_to_url(url).await;
+                            }
                         }
                     }
                 }
@@ -1054,6 +1128,7 @@ impl App {
                 KeyCode::Char('t') => {
                     self.screen = Screen::Connect;
                     self.sqlite_input.clear();
+                    self.connection_url_input.clear();
                     return;
                 }
                 KeyCode::Char('w') => {
