@@ -1,4 +1,3 @@
-use futures::StreamExt;
 use sqlx::{AnyPool, Column, Row, any::AnyRow, error::ErrorKind};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -253,21 +252,25 @@ impl DbClient {
     }
 
     pub async fn execute_query(&self, sql: &str) -> Result<QueryResult, sqlx::Error> {
-        let mut rows = Vec::new();
-        let mut rows_affected = 0;
-        let mut results = sqlx::query(sql).fetch_many(&self.pool);
-
-        while let Some(res) = results.next().await {
-            match res? {
-                sqlx::Either::Left(query_result) => {
-                    rows_affected += query_result.rows_affected();
-                }
-                sqlx::Either::Right(row) => {
-                    rows.push(row);
-                }
-            }
+        if !Self::is_read_only_sql(sql) {
+            let result = sqlx::query(sql).execute(&self.pool).await?;
+            return Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: result.rows_affected(),
+            });
         }
 
+        let rows = sqlx::query(sql).fetch_all(&self.pool).await?;
+        self.rows_to_query_result(sql, rows, 0).await
+    }
+
+    async fn rows_to_query_result(
+        &self,
+        sql: &str,
+        rows: Vec<AnyRow>,
+        rows_affected: u64,
+    ) -> Result<QueryResult, sqlx::Error> {
         if rows.is_empty() {
             return Ok(QueryResult {
                 columns: vec![],
@@ -283,7 +286,7 @@ impl DbClient {
             .collect();
 
         if self.db_type == DbType::Postgres {
-            // Try native decode; fall back to text-cast subquery on type error
+            // Try native decode; fall back to text-cast subquery on type error.
             if row_to_strings_checked(&rows[0]).is_ok() {
                 let data = rows.iter().map(|r| row_to_strings(r)).collect();
                 return Ok(QueryResult {
@@ -293,22 +296,19 @@ impl DbClient {
                 });
             }
 
-            // Only retry with casts if it's a read-only query to avoid double-mutations
-            if Self::is_read_only_sql(sql) {
-                let select = columns
-                    .iter()
-                    .map(|c| format!("{}::text", self.quote_ident(c)))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let cast_sql = format!("SELECT {} FROM ({}) __db_eye_q", select, sql);
-                let rows2 = sqlx::query(&cast_sql).fetch_all(&self.pool).await?;
-                let data = rows2.iter().map(|r| row_to_strings(r)).collect();
-                return Ok(QueryResult {
-                    columns,
-                    rows: data,
-                    rows_affected,
-                });
-            }
+            let select = columns
+                .iter()
+                .map(|c| format!("{}::text", self.quote_ident(c)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let cast_sql = format!("SELECT {} FROM ({}) __db_eye_q", select, sql);
+            let rows2 = sqlx::query(&cast_sql).fetch_all(&self.pool).await?;
+            let data = rows2.iter().map(|r| row_to_strings(r)).collect();
+            return Ok(QueryResult {
+                columns,
+                rows: data,
+                rows_affected,
+            });
         }
 
         let data = rows.iter().map(|r| row_to_strings(r)).collect();

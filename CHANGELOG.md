@@ -43,6 +43,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
 ### Changed
 
 - CRUD insert/update/delete sekarang memakai bind placeholders untuk values, bukan menyisipkan value langsung ke SQL eksekusi.
+- Custom SQL execution no longer uses deprecated `fetch_many`; read queries fetch rows and write queries report rows affected via `execute`.
 
 ## [0.2.0] - 2026-06-01
 
