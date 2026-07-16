@@ -1,5 +1,9 @@
 # DB-Eye
 
+<p align="left">
+  <img src="logo.svg" alt="DB-Eye Logo" width="450" />
+</p>
+
 Terminal UI database browser. SQLite, PostgreSQL, MySQL.
 
 ## Install
@@ -142,6 +146,7 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 
 - `PRD.md` — production roadmap and v1.0 acceptance criteria
 - `CHANGELOG.md` — release notes and known limitations
+- `docs/BRANDKIT.md` — brand guidelines, ANSI color maps, and ASCII art
 - `docs/DEVELOPMENT.md` — development workflow and definition of done
 - `docs/DEVLOG.md` — chronological development notes
 - `docs/templates/` — feature spec and release checklist templates
