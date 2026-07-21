@@ -33,6 +33,7 @@ pub enum Screen {
     ConfirmDelete,
     Help,
     QueryHistory,
+    TableStats,
 }
 
 pub struct App {
@@ -56,6 +57,7 @@ pub struct App {
     pub delete_confirm: Option<DeleteConfirm>,
     pub saved_connections: Vec<SavedConnection>,
     pub saved_index: usize,
+    pub table_stats: Option<crate::db::TableStats>,
 }
 
 impl App {
@@ -86,6 +88,7 @@ impl App {
             delete_confirm: None,
             saved_connections: vec![],
             saved_index: 0,
+            table_stats: None,
         };
         app.load_saved_connections();
         app
@@ -129,6 +132,7 @@ impl App {
                     Screen::ConfirmDelete => self.handle_confirm_delete(key.code).await,
                     Screen::Help => self.handle_help(key.code),
                     Screen::QueryHistory => self.handle_query_history(key.code).await,
+                    Screen::TableStats => self.handle_table_stats(key.code),
                 }
             }
         }
@@ -138,6 +142,16 @@ impl App {
     fn handle_help(&mut self, key: KeyCode) {
         match key {
             KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => {
+                self.screen = Screen::Main;
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_table_stats(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('s') => {
+                self.table_stats = None;
                 self.screen = Screen::Main;
             }
             _ => {}

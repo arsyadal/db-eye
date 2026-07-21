@@ -112,9 +112,9 @@ impl Tab {
 impl App {
     fn data_help(&self) -> &'static str {
         if self.read_only {
-            "READ-ONLY  |  j/k:nav  e:export  /:search  :::query  Ctrl+H:history  Esc:back"
+            "READ-ONLY  |  j/k:nav  v:export  s:stats  /:search  :::query  Ctrl+H:history  Esc:back"
         } else {
-            "j/k:nav  i:insert  u:update  d:delete  e:export  /:search  :::query  Ctrl+H:history  Esc:back"
+            "j/k:nav  i:insert  u:update  d:delete  e:edit  v:export  s:stats  /:search  :::query  Ctrl+H:history  Esc:back"
         }
     }
 
@@ -311,9 +311,9 @@ impl App {
                     tab.search_query.clear();
                     tab.update_filter();
                     let actions = if self.read_only {
-                        "READ-ONLY  /:search  e:csv  ::sql  Ctrl+H:history  q:back"
+                        "READ-ONLY  /:search  v:csv  s:stats  ::sql  Ctrl+H:history  q:back"
                     } else {
-                        "i:insert  u:update  d:delete  /:search  e:csv  ::sql  Ctrl+H:history  q:back"
+                        "i:insert  u:update  d:delete  e:edit  /:search  v:csv  s:stats  ::sql  Ctrl+H:history  q:back"
                     };
                     self.status = format!(
                         "{}  |  {} rows  |  Tab:focus  j/k:scroll  h/l:cols  {}",

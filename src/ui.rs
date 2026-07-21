@@ -34,6 +34,10 @@ pub fn draw(f: &mut Frame, app: &App) {
             draw_main(f, app);
             draw_query_history_popup(f, app);
         }
+        Screen::TableStats => {
+            draw_main(f, app);
+            draw_table_stats_popup(f, app);
+        }
     }
 }
 
@@ -1027,6 +1031,7 @@ fn draw_help_popup(f: &mut Frame) {
         Line::from(" /          Search / Filter rows"),
         Line::from(" i / u / d  Insert / Update / Delete row"),
         Line::from(" v          Export current view to CSV"),
+        Line::from(" s          Show table stats (indexes, size)"),
         Line::from(""),
         Line::from(Span::styled(
             " Form / Dialogs ",
@@ -1042,4 +1047,53 @@ fn draw_help_popup(f: &mut Frame) {
         .wrap(ratatui::widgets::Wrap { trim: false });
 
     f.render_widget(help_para, area);
+}
+
+fn draw_table_stats_popup(f: &mut Frame, app: &App) {
+    let area = centered_rect(60, 50, f.area());
+    f.render_widget(Clear, area);
+
+    let table_name = app
+        .current_tab()
+        .and_then(|t| t.tables.get(t.table_index))
+        .map(|t| t.name.as_str())
+        .unwrap_or("");
+
+    let mut lines = vec![
+        Line::from(vec![Span::styled(
+            format!(" {} ", table_name),
+            Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED),
+        )]),
+        Line::from(""),
+    ];
+
+    if let Some(stats) = app.table_stats.as_ref() {
+        let size_line = match &stats.size_label {
+            Some(size) => format!(" Size: {size}"),
+            None => " Size: n/a".to_string(),
+        };
+        lines.push(Line::from(size_line));
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            format!(" Indexes ({}) ", stats.indexes.len()),
+            Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        )));
+        if stats.indexes.is_empty() {
+            lines.push(Line::from(" (none)"));
+        } else {
+            for idx in &stats.indexes {
+                lines.push(Line::from(format!(" {idx}")));
+            }
+        }
+    }
+
+    let para = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Table Stats — Esc/s: close "),
+        )
+        .wrap(ratatui::widgets::Wrap { trim: false });
+
+    f.render_widget(para, area);
 }

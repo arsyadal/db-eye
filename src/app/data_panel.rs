@@ -132,6 +132,9 @@ impl App {
                     }
                 }
             }
+            KeyCode::Char('s') => {
+                self.open_table_stats().await;
+            }
             KeyCode::Char('i') => {
                 if self.read_only {
                     self.read_only_block();
@@ -166,6 +169,29 @@ impl App {
                 self.status = self.table_help().into();
             }
             _ => {}
+        }
+    }
+
+    async fn open_table_stats(&mut self) {
+        let (table, schema) = {
+            let tab = match self.current_tab() {
+                Some(t) => t,
+                None => return,
+            };
+            let table = match tab.tables.get(tab.table_index) {
+                Some(t) => t.name.clone(),
+                None => return,
+            };
+            (table, tab.current_schema().map(|s| s.to_string()))
+        };
+        if let Some(tab) = self.current_tab() {
+            match tab.db.table_stats(schema.as_deref(), &table).await {
+                Ok(stats) => {
+                    self.table_stats = Some(stats);
+                    self.screen = Screen::TableStats;
+                }
+                Err(e) => self.status = format_db_error("Loading table stats", &e),
+            }
         }
     }
 

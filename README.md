@@ -106,6 +106,7 @@ Saved connections (`Ctrl+S`) persist to a local JSON file — passwords are neve
 | `u` | Update selected row (full form) |
 | `d` | Delete selected row (requires PK + confirmation) |
 | `v` | Export visible data to CSV (mnemonic: view/export) |
+| `s` | Show table stats (indexes, approximate size) |
 | `Tab` | Switch focus to tables panel |
 | `q` / `Esc` | Back to tables panel |
 
@@ -155,6 +156,10 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 - PostgreSQL: connect to server → pick database from list
 - Auto column width fitting
 - Monochrome TUI — works in any terminal
+- Views listed alongside tables, labeled `(view)`
+- Column type shown with declared length/precision (e.g. `varchar(255)`, `numeric(10,2)`)
+- Required and default-value indicators on insert/update form fields
+- Table stats popup (`s`): index list and approximate on-disk size
 
 ## License
 
