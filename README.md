@@ -109,6 +109,8 @@ Saved connections (`Ctrl+S`) persist to a local JSON file — passwords are neve
 | `v` | Export visible data to CSV (mnemonic: view/export) |
 | `s` | Show table stats (indexes, approximate size) |
 | `o` | Sort by column under cursor (cycles asc → desc → off) |
+| `PageUp` / `PageDown` | Previous / next page |
+| `g` | Jump to row number |
 | `Tab` | Switch focus to tables panel |
 | `q` / `Esc` | Back to tables panel |
 
