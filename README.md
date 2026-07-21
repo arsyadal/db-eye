@@ -6,6 +6,8 @@
 
 Terminal UI database browser. SQLite, PostgreSQL, MySQL.
 
+![DB-Eye demo](docs/demo.gif)
+
 ## Install
 
 ```bash
