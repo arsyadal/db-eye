@@ -153,7 +153,7 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 - Data-type validation for CRUD and inline edits
 - Distinct NULL display (`<NULL>`) so string `NULL` remains editable as text
 - CRUD/edit forms treat empty input or `\\null` as database NULL
-- Foreign-key value hints in insert/update forms
+- Foreign-key dropdown (`←`/`→` to pick a value) in insert/update forms
 - Export query results to CSV
 - Multiple simultaneous DB connections (tabs)
 - PostgreSQL/MySQL: connect via form flow or full connection URL
