@@ -66,11 +66,12 @@ pub struct ConnectForm {
 
 impl ConnectForm {
     pub fn new(db_type: &DbTypeChoice) -> Self {
+        let pass = std::env::var("DB_PASSWORD").unwrap_or_default();
         Self {
             host: "localhost".into(),
             port: db_type.default_port().into(),
             user: String::new(),
-            pass: String::new(),
+            pass,
             active: 2, // start on User
         }
     }
@@ -333,7 +334,24 @@ impl App {
         }
     }
 
-    async fn connect_to_url(&mut self, url: String) {
+    async fn connect_to_url(&mut self, mut url: String) {
+        if let Ok(pass) = std::env::var("DB_PASSWORD")
+            && !pass.is_empty()
+            && let Some(proto_end) = url.find("://")
+            && let Some(at_idx) = url[proto_end + 3..].find('@')
+        {
+            let auth_part = &url[proto_end + 3..proto_end + 3 + at_idx];
+            if !auth_part.contains(':') {
+                url = format!(
+                    "{}{}:{}@{}",
+                    &url[..proto_end + 3],
+                    auth_part,
+                    pass,
+                    &url[proto_end + 3 + at_idx + 1..]
+                );
+            }
+        }
+
         let display = Self::display_connection_url(&url);
         self.status = format!("Opening {}...", display);
         match DbClient::connect(&url).await {

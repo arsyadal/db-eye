@@ -1,4 +1,4 @@
-use super::{App, CrudForm, Focus, Screen};
+use super::{App, CrudForm, ExportForm, ImportForm, Focus, Screen};
 use crate::db::{ColumnInfo, format_db_error};
 use crossterm::event::KeyCode;
 
@@ -126,14 +126,60 @@ impl App {
             }
             KeyCode::Char('v') => {
                 if let Some(tab) = self.current_tab() {
-                    match tab.export_csv() {
-                        Ok(f) => self.status = format!("Exported → {}", f),
-                        Err(e) => self.status = format!("Export error: {}", e),
-                    }
+                    let table_name = tab.path.split('/').next_back().unwrap_or("table");
+                    self.export_form = Some(ExportForm::new(table_name));
+                    self.screen = Screen::ExportForm;
+                }
+            }
+            KeyCode::Char('I') => {
+                if self.read_only {
+                    self.read_only_block();
+                    return;
+                }
+                if let Some(tab) = self.current_tab() {
+                    let db_cols = tab.result.as_ref().map(|r| r.columns.clone()).unwrap_or_default();
+                    self.import_form = Some(ImportForm::new(db_cols));
+                    self.screen = Screen::ImportForm;
                 }
             }
             KeyCode::Char('s') => {
                 self.open_table_stats().await;
+            }
+            KeyCode::Char('y') => {
+                if let Some(tab) = self.current_tab()
+                    && let Some(row_data) = tab.display_rows().get(tab.selected_row)
+                    && let Some(cell_val) = row_data.get(tab.col_offset)
+                {
+                    match copy_to_clipboard(cell_val) {
+                        Ok(()) => self.status = "Cell copied to clipboard".to_string(),
+                        Err(e) => self.status = format!("Copy failed: {}", e),
+                    }
+                }
+            }
+            KeyCode::Char('Y') => {
+                if let Some(tab) = self.current_tab()
+                    && let Some(row_data) = tab.display_rows().get(tab.selected_row)
+                {
+                    let joined = row_data.join("\t");
+                    match copy_to_clipboard(&joined) {
+                        Ok(()) => self.status = "Row copied to clipboard".to_string(),
+                        Err(e) => self.status = format!("Copy failed: {}", e),
+                    }
+                }
+            }
+            KeyCode::Char('C') => {
+                if let Some(tab) = self.current_tab() {
+                    let col_idx = tab.col_offset;
+                    let col_cells: Vec<String> = tab.display_rows()
+                        .iter()
+                        .filter_map(|r| r.get(col_idx).cloned())
+                        .collect();
+                    let joined = col_cells.join("\n");
+                    match copy_to_clipboard(&joined) {
+                        Ok(()) => self.status = "Column copied to clipboard".to_string(),
+                        Err(e) => self.status = format!("Copy failed: {}", e),
+                    }
+                }
             }
             KeyCode::Char('o') => {
                 self.toggle_sort_column().await;
@@ -376,5 +422,75 @@ impl App {
                 }
             }
         }
+    }
+}
+
+fn copy_to_clipboard(text: &str) -> Result<(), std::io::Error> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    #[cfg(target_os = "macos")]
+    let cmd: (&str, Vec<&str>) = ("pbcopy", vec![]);
+
+    #[cfg(target_os = "windows")]
+    let cmd: (&str, Vec<&str>) = ("clip", vec![]);
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let cmd: (&str, Vec<&str>) = if std::env::var("WAYLAND_DISPLAY").is_ok() {
+        ("wl-copy", vec![])
+    } else {
+        ("xclip", vec!["-selection", "clipboard"])
+    };
+
+    let mut child = Command::new(cmd.0)
+        .args(cmd.1)
+        .stdin(Stdio::piped())
+        .spawn()?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(text.as_bytes())?;
+    }
+    let _ = child.wait();
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{App, Tab};
+    use crate::db::{DbClient, QueryResult};
+
+    #[tokio::test]
+    async fn test_copy_shortcuts() {
+        let mut app = App::new(false);
+        let db = DbClient::connect("sqlite::memory:").await.unwrap();
+        let mut tab = Tab::new("test".to_string(), "test".to_string(), db);
+
+        let result = QueryResult {
+            columns: vec!["id".to_string(), "name".to_string()],
+            rows: vec![
+                vec!["1".to_string(), "Alice".to_string()],
+                vec!["2".to_string(), "Bob".to_string()],
+            ],
+            rows_affected: 0,
+        };
+        tab.result = Some(result);
+        tab.update_filter();
+
+        tab.selected_row = 1;
+        tab.col_offset = 1;
+        app.tabs.push(tab);
+        app.active_tab = 0;
+
+        app.handle_data_focus(KeyCode::Char('y')).await;
+        assert!(app.status.contains("copied to clipboard") || app.status.contains("Copy failed"));
+
+        app.status.clear();
+        app.handle_data_focus(KeyCode::Char('Y')).await;
+        assert!(app.status.contains("copied to clipboard") || app.status.contains("Copy failed"));
+
+        app.status.clear();
+        app.handle_data_focus(KeyCode::Char('C')).await;
+        assert!(app.status.contains("copied to clipboard") || app.status.contains("Copy failed"));
     }
 }

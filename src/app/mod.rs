@@ -2,12 +2,16 @@ mod connect;
 mod crud;
 mod crud_actions;
 mod data_panel;
+mod export;
+mod import;
 mod query;
 mod tabs;
 
 pub use connect::{ConnectForm, DbTypeChoice, SavedConnection, ServerConn};
 pub use crud::{CrudForm, CrudMode, DeleteConfirm};
-pub use query::{QueryHistoryEntry, format_duration_ms};
+pub use export::{ExportForm, ExportFormat, CsvDelimiter};
+pub use import::{ImportForm, ImportDelimiter};
+pub use query::{QueryHistoryEntry, format_duration_ms, NamedQuery};
 pub use tabs::Tab;
 
 use crate::ui;
@@ -22,6 +26,7 @@ pub enum Focus {
     Saved,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Screen {
     Connect,
     Databases,
@@ -36,6 +41,10 @@ pub enum Screen {
     TableStats,
     Jump,
     MultilineEditor,
+    ExportForm,
+    ImportForm,
+    SaveQueryPrompt,
+    NamedQueriesList,
 }
 
 pub struct App {
@@ -60,9 +69,14 @@ pub struct App {
     pub read_only: bool,
     pub crud_form: Option<CrudForm>,
     pub delete_confirm: Option<DeleteConfirm>,
+    pub export_form: Option<ExportForm>,
+    pub import_form: Option<ImportForm>,
     pub saved_connections: Vec<SavedConnection>,
     pub saved_index: usize,
     pub table_stats: Option<crate::db::TableStats>,
+    pub named_queries: Vec<NamedQuery>,
+    pub save_query_input: String,
+    pub named_query_index: usize,
 }
 
 impl App {
@@ -94,11 +108,17 @@ impl App {
             read_only,
             crud_form: None,
             delete_confirm: None,
+            export_form: None,
+            import_form: None,
             saved_connections: vec![],
             saved_index: 0,
             table_stats: None,
+            named_queries: vec![],
+            save_query_input: String::new(),
+            named_query_index: 0,
         };
         app.load_saved_connections();
+        app.load_named_queries();
         app
     }
 
@@ -134,7 +154,7 @@ impl App {
                     Screen::Databases => self.handle_databases(key.code).await,
                     Screen::Schemas => self.handle_schemas(key.code).await,
                     Screen::Main => self.handle_main(key.code, key.modifiers).await,
-                    Screen::Query => self.handle_query(key.code).await,
+                    Screen::Query => self.handle_query(key.code, key.modifiers).await,
                     Screen::Search => self.handle_search(key.code),
                     Screen::CrudForm => self.handle_crud_form(key.code).await,
                     Screen::ConfirmDelete => self.handle_confirm_delete(key.code).await,
@@ -143,6 +163,10 @@ impl App {
                     Screen::TableStats => self.handle_table_stats(key.code),
                     Screen::Jump => self.handle_jump(key.code).await,
                     Screen::MultilineEditor => self.handle_multiline_editor(key.code),
+                    Screen::ExportForm => self.handle_export_form(key.code),
+                    Screen::ImportForm => self.handle_import_form(key.code).await,
+                    Screen::SaveQueryPrompt => self.handle_save_query_prompt(key.code),
+                    Screen::NamedQueriesList => self.handle_named_queries_list(key.code),
                 }
             }
         }

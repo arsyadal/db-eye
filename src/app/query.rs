@@ -1,6 +1,6 @@
 use super::{App, Screen};
-use crate::db::{DbClient, format_db_error};
-use crossterm::event::KeyCode;
+use crate::db::{DbClient, DbType, format_db_error};
+use crossterm::event::{KeyCode, KeyModifiers};
 use std::time::Instant;
 
 #[derive(Clone)]
@@ -26,7 +26,7 @@ impl QueryHistoryEntry {
 }
 
 impl App {
-    pub(super) async fn handle_query(&mut self, key: KeyCode) {
+    pub(super) async fn handle_query(&mut self, key: KeyCode, modifiers: KeyModifiers) {
         match key {
             KeyCode::Up => {
                 if let Some(tab) = self.current_tab_mut()
@@ -61,6 +61,30 @@ impl App {
                         self.query_input.clear();
                     }
                 }
+            }
+            KeyCode::Char('e') if modifiers.contains(KeyModifiers::CONTROL) => {
+                let sql = self.query_input.trim().to_string();
+                if !sql.is_empty() && let Some(tab) = self.current_tab() {
+                    let prefix = match tab.db.db_type {
+                        DbType::Sqlite => "EXPLAIN QUERY PLAN ",
+                        DbType::Postgres | DbType::Mysql => "EXPLAIN ",
+                    };
+                    let explain_sql = format!("{}{}", prefix, sql);
+                    self.execute_current_query(explain_sql).await;
+                    self.screen = Screen::Main;
+                }
+            }
+            KeyCode::Char('s') if modifiers.contains(KeyModifiers::CONTROL) => {
+                let sql = self.query_input.trim().to_string();
+                if !sql.is_empty() {
+                    self.save_query_input.clear();
+                    self.screen = Screen::SaveQueryPrompt;
+                }
+            }
+            KeyCode::Char('n') if modifiers.contains(KeyModifiers::CONTROL) => {
+                self.load_named_queries();
+                self.named_query_index = 0;
+                self.screen = Screen::NamedQueriesList;
             }
             KeyCode::Char(c) => {
                 self.query_input.push(c);
@@ -216,6 +240,125 @@ impl App {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct NamedQuery {
+    pub name: String,
+    pub sql: String,
+}
+
+impl App {
+    pub fn queries_config_path(&self) -> Option<std::path::PathBuf> {
+        #[cfg(target_os = "windows")]
+        let base = std::env::var("APPDATA").ok().map(std::path::PathBuf::from);
+        #[cfg(not(target_os = "windows"))]
+        let base = std::env::var("HOME")
+            .ok()
+            .map(|h| std::path::PathBuf::from(h).join(".config"));
+
+        base.map(|b| b.join("db-eye").join("queries.json"))
+    }
+
+    pub fn load_named_queries(&mut self) {
+        if let Some(path) = self.queries_config_path()
+            && path.exists()
+            && let Ok(content) = std::fs::read_to_string(&path)
+            && let Ok(queries) = serde_json::from_str::<Vec<NamedQuery>>(&content)
+        {
+            self.named_queries = queries;
+            return;
+        }
+        self.named_queries = vec![];
+    }
+
+    pub fn save_named_queries(&self) {
+        if let Some(path) = self.queries_config_path() {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Ok(content) = serde_json::to_string_pretty(&self.named_queries) {
+                let _ = std::fs::write(&path, content);
+            }
+        }
+    }
+
+    pub(super) fn handle_save_query_prompt(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Char(c) => {
+                self.save_query_input.push(c);
+            }
+            KeyCode::Backspace => {
+                self.save_query_input.pop();
+            }
+            KeyCode::Enter => {
+                let name = self.save_query_input.trim().to_string();
+                if !name.is_empty() {
+                    let sql = self.query_input.trim().to_string();
+                    if let Some(pos) = self.named_queries.iter().position(|q| q.name == name) {
+                        self.named_queries[pos].sql = sql;
+                    } else {
+                        self.named_queries.push(NamedQuery { name: name.clone(), sql });
+                    }
+                    self.save_named_queries();
+                    self.status = format!("Query saved as '{}'", name);
+                }
+                self.screen = Screen::Query;
+            }
+            KeyCode::Esc => {
+                self.screen = Screen::Query;
+            }
+            _ => {}
+        }
+    }
+
+    pub(super) fn handle_named_queries_list(&mut self, key: KeyCode) {
+        if self.named_queries.is_empty() {
+            match key {
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    self.screen = Screen::Query;
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        match key {
+            KeyCode::Char('j') | KeyCode::Down => {
+                if self.named_query_index + 1 < self.named_queries.len() {
+                    self.named_query_index += 1;
+                } else {
+                    self.named_query_index = 0;
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                if self.named_query_index > 0 {
+                    self.named_query_index -= 1;
+                } else {
+                    self.named_query_index = self.named_queries.len().saturating_sub(1);
+                }
+            }
+            KeyCode::Enter => {
+                if let Some(q) = self.named_queries.get(self.named_query_index) {
+                    self.query_input = q.sql.clone();
+                    self.screen = Screen::Query;
+                    self.status = format!("Loaded named query '{}'", q.name);
+                }
+            }
+            KeyCode::Delete | KeyCode::Backspace if self.named_query_index < self.named_queries.len() => {
+                let removed = self.named_queries.remove(self.named_query_index);
+                self.save_named_queries();
+                self.status = format!("Deleted named query '{}'", removed.name);
+                if self.named_query_index >= self.named_queries.len() {
+                    self.named_query_index = self.named_queries.len().saturating_sub(1);
+                }
+            }
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.screen = Screen::Query;
+            }
+            _ => {}
+        }
+    }
+}
+
 pub fn format_duration_ms(ms: u128) -> String {
     if ms < 1_000 {
         format!("{}ms", ms)
@@ -227,6 +370,7 @@ pub fn format_duration_ms(ms: u128) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::Tab;
 
     #[test]
     fn read_only_sql_allows_selects_and_explain() {
@@ -244,5 +388,51 @@ mod tests {
         assert!(!DbClient::is_read_only_sql("UPDATE users SET name = 'Ada'"));
         assert!(!DbClient::is_read_only_sql("delete from users"));
         assert!(!DbClient::is_read_only_sql("drop table users"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_query_explain() {
+        let mut app = App::new(false);
+        app.screen = Screen::Query;
+        app.query_input = "SELECT * FROM users".to_string();
+        
+        let db = DbClient::connect("sqlite::memory:").await.unwrap();
+        app.tabs.push(Tab::new("sqlite::memory:".to_string(), "sqlite::memory:".to_string(), db));
+        app.active_tab = 0;
+        
+        // Execute Ctrl+E
+        app.handle_query(KeyCode::Char('e'), KeyModifiers::CONTROL).await;
+        
+        // It should try to execute "EXPLAIN QUERY PLAN SELECT * FROM users"
+        // and fail with "no such table: users" or similar, proving it prepended the explain prefix
+        assert!(app.query_history.iter().any(|h| h.sql.starts_with("EXPLAIN QUERY PLAN")));
+    }
+
+    #[test]
+    fn test_named_queries_saving_loading_and_actions() {
+        let mut app = App::new(false);
+        app.query_input = "SELECT 1".to_string();
+        app.save_query_input = "test_q".to_string();
+
+        // Test save query prompt Enter key
+        app.handle_save_query_prompt(KeyCode::Enter);
+        assert_eq!(app.named_queries.len(), 1);
+        assert_eq!(app.named_queries[0].name, "test_q");
+        assert_eq!(app.named_queries[0].sql, "SELECT 1");
+        assert_eq!(app.screen, Screen::Query);
+
+        // Clear query input and load named query
+        app.query_input.clear();
+        app.screen = Screen::NamedQueriesList;
+        app.named_query_index = 0;
+        app.handle_named_queries_list(KeyCode::Enter);
+        assert_eq!(app.query_input, "SELECT 1");
+        assert_eq!(app.screen, Screen::Query);
+
+        // Test deletion
+        app.screen = Screen::NamedQueriesList;
+        app.named_query_index = 0;
+        app.handle_named_queries_list(KeyCode::Delete);
+        assert_eq!(app.named_queries.len(), 0);
     }
 }
