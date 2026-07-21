@@ -258,6 +258,8 @@ mod tests {
             pk_order,
             fk_table: None,
             fk_column: None,
+            is_nullable: true,
+            default_value: None,
         }
     }
 
@@ -345,6 +347,8 @@ mod tests {
                     pk_order: 1,
                     fk_table: None,
                     fk_column: None,
+                    is_nullable: false,
+                    default_value: None,
                 },
                 ColumnInfo {
                     name: "user_id".to_string(),
@@ -353,6 +357,8 @@ mod tests {
                     pk_order: 2,
                     fk_table: None,
                     fk_column: None,
+                    is_nullable: false,
+                    default_value: None,
                 },
                 col("name", false),
             ],

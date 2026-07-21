@@ -822,20 +822,37 @@ fn draw_crud_form(f: &mut Frame, app: &App) {
             Style::default().fg(Color::DarkGray)
         };
 
+        let name_label = if col.is_required() {
+            format!("{}*", col.name)
+        } else {
+            col.name.clone()
+        };
+        let default_suffix = col
+            .default_value
+            .as_deref()
+            .map(|d| format!(" [default: {}]", d))
+            .unwrap_or_default();
         let fk_label = col
             .fk_table
             .as_deref()
             .map(|t| {
                 format!(
-                    " {} ({}) → {} | {} ",
-                    col.name,
+                    " {} ({}) → {} | {}{} ",
+                    name_label,
                     col.data_type,
                     t,
-                    col.input_hint()
+                    col.input_hint(),
+                    default_suffix
                 )
             })
             .unwrap_or_else(|| {
-                format!(" {} ({}) | {} ", col.name, col.data_type, col.input_hint())
+                format!(
+                    " {} ({}) | {}{} ",
+                    name_label,
+                    col.data_type,
+                    col.input_hint(),
+                    default_suffix
+                )
             });
         let field_rect = Rect {
             x: field_area.x,
@@ -891,7 +908,7 @@ fn draw_crud_form(f: &mut Frame, app: &App) {
     let hint = if app.status.starts_with("Error") {
         app.status.as_str()
     } else {
-        "  Tab or ↑↓: navigate fields    Enter: save    Esc: cancel    empty/\\null = NULL"
+        "  Tab or ↑↓: navigate fields    Enter: save    Esc: cancel    empty/\\null = NULL    * = required"
     };
     let hint_style = if app.status.starts_with("Error") {
         Style::default().add_modifier(Modifier::BOLD)
