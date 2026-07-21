@@ -393,7 +393,11 @@ impl DbClient {
                     "SELECT c.column_name::text, c.data_type::text, \
                      CASE WHEN pk.column_name IS NOT NULL THEN 1 ELSE 0 END, \
                      COALESCE(pk.ordinal_position, 0)::text, \
-                     c.is_nullable::text, COALESCE(c.column_default::text, '') \
+                     c.is_nullable::text, COALESCE(c.column_default::text, ''), \
+                     COALESCE(c.character_maximum_length::text, ''), \
+                     COALESCE(c.numeric_precision::text, ''), \
+                     COALESCE(c.numeric_scale::text, ''), \
+                     COALESCE(c.numeric_precision_radix::text, '') \
                      FROM information_schema.columns c \
                      LEFT JOIN ( \
                          SELECT kcu.column_name, kcu.ordinal_position \
@@ -415,7 +419,13 @@ impl DbClient {
                         let default_value = row_cell(r, 5);
                         ColumnInfo {
                             name: row_cell(r, 0),
-                            data_type: row_cell(r, 1),
+                            data_type: format_precise_type(
+                                &row_cell(r, 1),
+                                &row_cell(r, 6),
+                                &row_cell(r, 7),
+                                &row_cell(r, 8),
+                                &row_cell(r, 9),
+                            ),
                             is_pk: row_cell(r, 2) == "1",
                             pk_order: row_cell(r, 3).parse::<i64>().unwrap_or(0),
                             fk_table: None,
@@ -460,7 +470,11 @@ impl DbClient {
                 let sql = format!(
                     "SELECT c.column_name, c.data_type, IF(kcu.column_name IS NULL,'0','1'), \
                      COALESCE(kcu.ordinal_position, 0), \
-                     c.is_nullable, COALESCE(c.column_default, '') \
+                     c.is_nullable, COALESCE(c.column_default, ''), \
+                     COALESCE(c.character_maximum_length, ''), \
+                     COALESCE(c.numeric_precision, ''), \
+                     COALESCE(c.numeric_scale, ''), \
+                     COALESCE(c.numeric_precision_radix, '') \
                      FROM information_schema.columns c \
                      LEFT JOIN information_schema.key_column_usage kcu \
                        ON c.table_schema = kcu.table_schema \
@@ -478,7 +492,13 @@ impl DbClient {
                         let default_value = row_cell(r, 5);
                         ColumnInfo {
                             name: row_cell(r, 0),
-                            data_type: row_cell(r, 1),
+                            data_type: format_precise_type(
+                                &row_cell(r, 1),
+                                &row_cell(r, 6),
+                                &row_cell(r, 7),
+                                &row_cell(r, 8),
+                                &row_cell(r, 9),
+                            ),
                             is_pk: row_cell(r, 2) == "1",
                             pk_order: row_cell(r, 3).parse::<i64>().unwrap_or(0),
                             fk_table: None,
@@ -677,6 +697,29 @@ fn is_binary_type(kind: &str) -> bool {
 
 fn is_datetime_type(kind: &str) -> bool {
     kind.contains("date") || kind.contains("time")
+}
+
+/// Appends declared length/precision to a base type name, e.g. "varchar" -> "varchar(255)"
+/// or "numeric" -> "numeric(10,2)". Only applies precision for base-10 (radix 10) numeric
+/// types (decimal/numeric) so intrinsic binary-width types like integer/real/double aren't
+/// misleadingly annotated with their bit width.
+fn format_precise_type(
+    base: &str,
+    char_len: &str,
+    num_precision: &str,
+    num_scale: &str,
+    num_precision_radix: &str,
+) -> String {
+    if !char_len.is_empty() {
+        return format!("{base}({char_len})");
+    }
+    if num_precision_radix == "10" && !num_precision.is_empty() {
+        if !num_scale.is_empty() && num_scale != "0" {
+            return format!("{base}({num_precision},{num_scale})");
+        }
+        return format!("{base}({num_precision})");
+    }
+    base.to_string()
 }
 
 fn row_cell(row: &AnyRow, i: usize) -> String {
