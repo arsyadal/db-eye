@@ -135,6 +135,9 @@ impl App {
             KeyCode::Char('s') => {
                 self.open_table_stats().await;
             }
+            KeyCode::Char('o') => {
+                self.toggle_sort_column().await;
+            }
             KeyCode::Char('i') => {
                 if self.read_only {
                     self.read_only_block();

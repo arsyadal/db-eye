@@ -211,13 +211,24 @@ impl DbClient {
         table: &str,
         limit: u32,
         offset: u32,
+        sort: Option<(&str, bool)>,
     ) -> Result<QueryResult, sqlx::Error> {
         match self.db_type {
-            DbType::Postgres => self.pg_text_query(schema, table, limit, offset).await,
+            DbType::Postgres => self.pg_text_query(schema, table, limit, offset, sort).await,
             _ => {
+                let order_by = sort
+                    .map(|(col, desc)| {
+                        format!(
+                            " ORDER BY {} {}",
+                            self.quote_ident(col),
+                            if desc { "DESC" } else { "ASC" }
+                        )
+                    })
+                    .unwrap_or_default();
                 let sql = format!(
-                    "SELECT * FROM {} LIMIT {} OFFSET {}",
+                    "SELECT * FROM {}{} LIMIT {} OFFSET {}",
                     self.quote_ident(table),
+                    order_by,
                     limit,
                     offset
                 );
@@ -233,6 +244,7 @@ impl DbClient {
         table: &str,
         limit: u32,
         offset: u32,
+        sort: Option<(&str, bool)>,
     ) -> Result<QueryResult, sqlx::Error> {
         let schema_name = schema.unwrap_or("public");
         let cols_sql = format!(
@@ -255,11 +267,21 @@ impl DbClient {
             .map(|c| format!("{}::text", self.quote_ident(c)))
             .collect::<Vec<_>>()
             .join(", ");
+        let order_by = sort
+            .map(|(col, desc)| {
+                format!(
+                    " ORDER BY {} {}",
+                    self.quote_ident(col),
+                    if desc { "DESC" } else { "ASC" }
+                )
+            })
+            .unwrap_or_default();
         let sql = format!(
-            "SELECT {} FROM {}.{} LIMIT {} OFFSET {}",
+            "SELECT {} FROM {}.{}{} LIMIT {} OFFSET {}",
             select,
             self.quote_ident(schema_name),
             self.quote_ident(table),
+            order_by,
             limit,
             offset
         );
