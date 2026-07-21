@@ -278,6 +278,13 @@ impl App {
                     form.cycle_fk_hint(false);
                 }
             }
+            KeyCode::F(2) => {
+                if let Some(form) = self.crud_form.as_ref() {
+                    self.multiline_buffer = form.values[form.active_field].clone();
+                    self.multiline_cursor = self.multiline_buffer.chars().count();
+                    self.screen = Screen::MultilineEditor;
+                }
+            }
             KeyCode::Char(c) => {
                 if let Some(ref mut form) = self.crud_form
                     && let Some(value) = form.values.get_mut(form.active_field)
@@ -379,5 +386,91 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    pub(super) fn handle_multiline_editor(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::F(2) => {
+                if let Some(ref mut form) = self.crud_form
+                    && let Some(slot) = form.values.get_mut(form.active_field)
+                {
+                    *slot = self.multiline_buffer.clone();
+                }
+                self.screen = Screen::CrudForm;
+            }
+            KeyCode::Esc => {
+                self.screen = Screen::CrudForm;
+            }
+            KeyCode::Char(c) => {
+                let mut chars: Vec<char> = self.multiline_buffer.chars().collect();
+                chars.insert(self.multiline_cursor, c);
+                self.multiline_buffer = chars.into_iter().collect();
+                self.multiline_cursor += 1;
+            }
+            KeyCode::Enter => {
+                let mut chars: Vec<char> = self.multiline_buffer.chars().collect();
+                chars.insert(self.multiline_cursor, '\n');
+                self.multiline_buffer = chars.into_iter().collect();
+                self.multiline_cursor += 1;
+            }
+            KeyCode::Backspace if self.multiline_cursor > 0 => {
+                let mut chars: Vec<char> = self.multiline_buffer.chars().collect();
+                chars.remove(self.multiline_cursor - 1);
+                self.multiline_buffer = chars.into_iter().collect();
+                self.multiline_cursor -= 1;
+            }
+            KeyCode::Delete => {
+                let mut chars: Vec<char> = self.multiline_buffer.chars().collect();
+                if self.multiline_cursor < chars.len() {
+                    chars.remove(self.multiline_cursor);
+                    self.multiline_buffer = chars.into_iter().collect();
+                }
+            }
+            KeyCode::Left => {
+                self.multiline_cursor = self.multiline_cursor.saturating_sub(1);
+            }
+            KeyCode::Right => {
+                let len = self.multiline_buffer.chars().count();
+                self.multiline_cursor = (self.multiline_cursor + 1).min(len);
+            }
+            KeyCode::Up => self.move_multiline_cursor_vertical(-1),
+            KeyCode::Down => self.move_multiline_cursor_vertical(1),
+            _ => {}
+        }
+    }
+
+    fn move_multiline_cursor_vertical(&mut self, delta: isize) {
+        let chars: Vec<char> = self.multiline_buffer.chars().collect();
+        let mut row = 0usize;
+        let mut col = 0usize;
+        for &c in chars.iter().take(self.multiline_cursor) {
+            if c == '\n' {
+                row += 1;
+                col = 0;
+            } else {
+                col += 1;
+            }
+        }
+
+        let lines: Vec<&[char]> = chars.split(|&c| c == '\n').collect();
+        let target_row = if delta < 0 {
+            match row.checked_sub(1) {
+                Some(r) => r,
+                None => return,
+            }
+        } else {
+            if row + 1 >= lines.len() {
+                return;
+            }
+            row + 1
+        };
+
+        let target_col = col.min(lines[target_row].len());
+        let mut new_cursor = 0;
+        for line in &lines[..target_row] {
+            new_cursor += line.len() + 1;
+        }
+        new_cursor += target_col;
+        self.multiline_cursor = new_cursor;
     }
 }
