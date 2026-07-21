@@ -68,7 +68,7 @@ Target dokumen ini adalah daftar fitur yang perlu diimplementasikan atau bisa di
 - Jangan treat semua input sebagai string.
 - Tampilkan nilai NULL beda dari string `"NULL"`. ✅ initial implementation
 
-### 5. Error Handling dan Recovery
+### 5. Error Handling dan Recovery ✅
 
 - Pesan error user-friendly untuk:
   - connection failed
@@ -77,8 +77,8 @@ Target dokumen ini adalah daftar fitur yang perlu diimplementasikan atau bisa di
   - unique constraint violation
   - invalid SQL
   - network timeout
-- Jangan crash saat query gagal atau koneksi putus.
-- Tambahkan reconnect action.
+- Jangan crash saat query gagal atau koneksi putus. ✅ semua DB call sudah `Result`-based, tidak ada `.unwrap()` di jalur produksi
+- Tambahkan reconnect action. ✅ `Ctrl+R` — reconnect tab aktif pakai `reconnect_url` yang tersimpan, lalu reload schema/table list
 
 ## Prioritas P1 — Sangat Direkomendasikan
 

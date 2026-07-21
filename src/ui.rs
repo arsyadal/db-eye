@@ -1015,6 +1015,7 @@ fn draw_help_popup(f: &mut Frame) {
         Line::from(" Tab        Switch focus (Inputs / Saved list)"),
         Line::from(" Delete     Delete saved connection"),
         Line::from(" Ctrl+W      Close current tab"),
+        Line::from(" Ctrl+R      Reconnect current tab (recovers a dropped connection)"),
         Line::from(" [ / ]       Switch between tabs"),
         Line::from(" Tab        Switch focus (Tables list / Data panel)"),
         Line::from(" j / k      Navigate lists (Tables, Databases, Schemas, Saved)"),

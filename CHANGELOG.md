@@ -47,6 +47,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
   - Declared length/precision in the displayed column type (e.g. `varchar(255)`, `numeric(10,2)`).
 - Views listed alongside tables in the Tables panel, labeled `(view)` (previously silently mixed in unlabeled for MySQL, silently excluded for SQLite/PostgreSQL).
 - Table stats popup (`s` in the data panel): index list and approximate on-disk size.
+- Manual reconnect action (`Ctrl+R`): re-establishes a dropped connection on the current tab using the original connection URL, then reloads schema/table list and the open table's data if one was loaded. Previously a dropped connection required closing the tab (`Ctrl+W`) and reconnecting from scratch.
 
 ### Fixed
 

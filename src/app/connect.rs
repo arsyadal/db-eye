@@ -284,7 +284,7 @@ impl App {
         };
         match DbClient::connect(&url).await {
             Ok(client) => {
-                let mut tab = Tab::new(path.clone(), client);
+                let mut tab = Tab::new(path.clone(), url.clone(), client);
                 match tab.db.list_tables(None).await {
                     Ok(tables) => tab.tables = tables,
                     Err(e) => {
@@ -338,7 +338,7 @@ impl App {
         self.status = format!("Opening {}...", display);
         match DbClient::connect(&url).await {
             Ok(client) => {
-                let mut tab = Tab::new(display.clone(), client);
+                let mut tab = Tab::new(display.clone(), url.clone(), client);
 
                 if tab.db.db_type == crate::db::DbType::Postgres {
                     match tab.db.list_schemas().await {
@@ -411,7 +411,7 @@ impl App {
         self.status = format!("Opening {}...", db_name);
         match DbClient::connect(&url).await {
             Ok(client) => {
-                let mut tab = Tab::new(display.clone(), client);
+                let mut tab = Tab::new(display.clone(), url.clone(), client);
                 tab.server_info = Some((sc_form, sc_db_type));
 
                 if tab.db.db_type == crate::db::DbType::Postgres {
