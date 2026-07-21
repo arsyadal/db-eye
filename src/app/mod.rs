@@ -35,6 +35,7 @@ pub enum Screen {
     QueryHistory,
     TableStats,
     Jump,
+    MultilineEditor,
 }
 
 pub struct App {
@@ -50,6 +51,8 @@ pub struct App {
     pub query_input: String,
     pub search_input: String,
     pub jump_input: String,
+    pub multiline_buffer: String,
+    pub multiline_cursor: usize,
     pub query_history: Vec<QueryHistoryEntry>,
     pub history_index: usize,
     pub status: String,
@@ -82,6 +85,8 @@ impl App {
             query_input: String::new(),
             search_input: String::new(),
             jump_input: String::new(),
+            multiline_buffer: String::new(),
+            multiline_cursor: 0,
             query_history: vec![],
             history_index: 0,
             status: status.into(),
@@ -137,6 +142,7 @@ impl App {
                     Screen::QueryHistory => self.handle_query_history(key.code).await,
                     Screen::TableStats => self.handle_table_stats(key.code),
                     Screen::Jump => self.handle_jump(key.code).await,
+                    Screen::MultilineEditor => self.handle_multiline_editor(key.code),
                 }
             }
         }

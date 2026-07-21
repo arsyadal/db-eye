@@ -93,7 +93,7 @@ The goal of this document is to list the features that still need to be implemen
   - clear-to-NULL shortcut
 - Correctly support multi-character paste.
 - Support horizontal scroll in the form for long text.
-- Support a multiline text editor popup.
+- Support a multiline text editor popup. ✅ `F2` on an active field, own cursor/insert/delete/line-navigation
 
 ### 2. Query Experience
 

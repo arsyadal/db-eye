@@ -123,6 +123,15 @@ Saved connections (`Ctrl+S`) persist to a local JSON file — passwords are neve
 | `r` | Re-run selected query |
 | `Esc` / `q` | Close history |
 
+### Insert/Update Form
+| Key | Action |
+|-----|--------|
+| `Tab` / `↑` / `↓` | Navigate fields |
+| `←` / `→` | Pick a value on FK fields |
+| `F2` | Open multiline text editor for the active field |
+| `Enter` | Save row |
+| `Esc` | Cancel |
+
 ## Safety
 
 Use `--read-only` / `-r` to disable write operations. In read-only mode:
@@ -154,6 +163,7 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 - Distinct NULL display (`<NULL>`) so string `NULL` remains editable as text
 - CRUD/edit forms treat empty input or `\\null` as database NULL
 - Foreign-key dropdown (`←`/`→` to pick a value) in insert/update forms
+- Multiline text editor popup (`F2`) for long field values
 - Export query results to CSV
 - Multiple simultaneous DB connections (tabs)
 - PostgreSQL/MySQL: connect via form flow or full connection URL

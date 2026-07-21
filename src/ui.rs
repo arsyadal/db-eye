@@ -42,6 +42,10 @@ pub fn draw(f: &mut Frame, app: &App) {
             draw_main(f, app);
             draw_jump_bar(f, app);
         }
+        Screen::MultilineEditor => {
+            draw_crud_form(f, app);
+            draw_multiline_editor(f, app);
+        }
     }
 }
 
@@ -799,6 +803,31 @@ fn draw_jump_bar(f: &mut Frame, app: &App) {
     f.set_cursor_position((bar_area.x + app.jump_input.len() as u16 + 6, bar_area.y + 1));
 }
 
+fn draw_multiline_editor(f: &mut Frame, app: &App) {
+    let area = centered_rect(70, 60, f.area());
+    f.render_widget(Clear, area);
+
+    let chars: Vec<char> = app.multiline_buffer.chars().collect();
+    let mut row = 0u16;
+    let mut col = 0u16;
+    for &c in chars.iter().take(app.multiline_cursor) {
+        if c == '\n' {
+            row += 1;
+            col = 0;
+        } else {
+            col += 1;
+        }
+    }
+
+    let para = Paragraph::new(app.multiline_buffer.as_str()).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Multiline Edit — F2: save  Esc: cancel "),
+    );
+    f.render_widget(para, area);
+    f.set_cursor_position((area.x + 1 + col, area.y + 1 + row));
+}
+
 fn draw_crud_form(f: &mut Frame, app: &App) {
     let form = match app.crud_form.as_ref() {
         Some(f) => f,
@@ -960,7 +989,7 @@ fn draw_crud_form(f: &mut Frame, app: &App) {
     let hint = if app.status.starts_with("Error") {
         app.status.as_str()
     } else {
-        "  Tab or ↑↓: navigate fields    Enter: save    Esc: cancel    empty/\\null = NULL    * = required"
+        "  Tab or ↑↓: navigate fields    Enter: save    F2: multiline edit    Esc: cancel    empty/\\null = NULL    * = required"
     };
     let hint_style = if app.status.starts_with("Error") {
         Style::default().add_modifier(Modifier::BOLD)
@@ -1086,6 +1115,7 @@ fn draw_help_popup(f: &mut Frame) {
         )),
         Line::from(" Tab        Next field"),
         Line::from(" ← / →      Pick a FK value (on FK fields)"),
+        Line::from(" F2         Open multiline text editor for the active field"),
         Line::from(" Enter      Confirm / Save"),
         Line::from(" y / n      Confirm Delete (Yes/No)"),
     ];
