@@ -1,8 +1,6 @@
 # DB-Eye
 
-<p align="left">
-  <img src="logo.svg" alt="DB-Eye Logo" width="450" />
-</p>
+<img src="logo.svg" alt="DB-Eye Logo" width="360" />
 
 Terminal UI database browser. SQLite, PostgreSQL, MySQL.
 

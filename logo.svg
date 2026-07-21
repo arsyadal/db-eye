@@ -1,149 +1,36 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="100%" height="100%">
-  <!-- Definitions for gradients and clips -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 130" width="460" height="130">
   <defs>
-    <!-- Background Gradient -->
-    <radialGradient id="bg-glow" cx="50%" cy="50%" r="60%">
-      <stop offset="0%" stop-color="#1c1e22" />
-      <stop offset="100%" stop-color="#0b0c0e" />
-    </radialGradient>
-
-    <!-- Brand Cyan Gradient -->
-    <linearGradient id="cyan-glow" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00f3ff" />
-      <stop offset="100%" stop-color="#00a8ff" />
-    </linearGradient>
-
-    <!-- Terminal Green Gradient -->
-    <linearGradient id="green-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="green" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#00FF66" />
       <stop offset="100%" stop-color="#00B344" />
     </linearGradient>
-
-    <!-- Dark Metal Gradient -->
-    <linearGradient id="metal-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#2c2e35" />
-      <stop offset="100%" stop-color="#15161b" />
-    </linearGradient>
-    
-    <!-- Subtle Grid Pattern -->
-    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.03" />
-    </pattern>
   </defs>
 
-  <!-- Background -->
-  <rect width="800" height="600" fill="url(#bg-glow)" />
-  <rect width="800" height="600" fill="url(#grid)" />
+  <!-- Icon: hex frame containing isometric DB layers + eye/cursor -->
+  <g transform="translate(15, 10)">
+    <polygon points="55,4 100,29 100,79 55,104 10,79 10,29"
+      fill="#0C0D0E" stroke="#666666" stroke-width="2" />
 
-  <!-- Presentation Border & Details -->
-  <rect x="25" y="25" width="750" height="550" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1" />
-  
-  <!-- Technical Crosshairs / Alignment Marks -->
-  <path d="M 20 25 L 30 25 M 25 20 L 25 30" stroke="#ffffff" stroke-opacity="0.2" stroke-width="1" />
-  <path d="M 770 25 L 780 25 M 775 20 L 775 30" stroke="#ffffff" stroke-opacity="0.2" stroke-width="1" />
-  <path d="M 20 575 L 30 575 M 25 570 L 25 580" stroke="#ffffff" stroke-opacity="0.2" stroke-width="1" />
-  <path d="M 770 575 L 780 575 M 775 570 L 775 580" stroke="#ffffff" stroke-opacity="0.2" stroke-width="1" />
+    <!-- top DB layer -->
+    <path d="M 55 26 L 82 40 L 55 54 L 28 40 Z"
+      fill="none" stroke="#FFFFFF" stroke-opacity="0.5" stroke-width="1.5" />
 
-  <!-- Document Header details -->
-  <text x="45" y="55" font-family="monospace" font-size="10" fill="#ffffff" fill-opacity="0.3" letter-spacing="1.5">SYSTEM: DB-EYE / IDENTITY / v1.0</text>
-  <text x="755" y="55" font-family="monospace" font-size="10" fill="#ffffff" fill-opacity="0.3" text-anchor="end" letter-spacing="1">BOARD 01 // OVERVIEW</text>
+    <!-- middle layer: the eye -->
+    <path d="M 28 54 C 40 46 70 46 82 54 C 70 62 40 62 28 54 Z"
+      fill="#0C0D0E" stroke="url(#green)" stroke-width="2.5" />
+    <rect x="49" y="49" width="12" height="10" rx="1" fill="url(#green)" />
 
-  <!-- Logo Mark & Text Composition -->
-  <g transform="translate(140, 160)">
-    
-    <!-- LEFT: LOGO MARK (THE EYE + THE DATABASE GRID) -->
-    <g transform="translate(0, 0)">
-      <!-- Outer Hex Shield/Grid Frame -->
-      <polygon points="100,10 180,55 180,145 100,190 20,145 20,55" fill="url(#metal-grad)" stroke="#ffffff" stroke-opacity="0.1" stroke-width="2" />
-      
-      <!-- Isometric Database Cylinders/Layers -->
-      <!-- Top Layer -->
-      <path d="M 100 40 L 150 65 L 100 90 L 50 65 Z" fill="#22252a" stroke="#ffffff" stroke-opacity="0.15" stroke-width="1.5" />
-      
-      <!-- Middle Layer (The Focus Eye / Screen Layer) -->
-      <path d="M 50 90 C 50 90 75 75 100 75 C 125 75 150 90 150 90 C 150 90 125 105 100 105 C 75 105 50 90 50 90 Z" fill="#15171c" stroke="url(#green-glow)" stroke-width="3" />
-      
-      <!-- Glowing Pupil / Terminal Cursor in the Eye Center -->
-      <rect x="93" y="85" width="14" height="10" fill="url(#green-glow)" rx="1">
-        <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" />
-      </rect>
-      
-      <!-- Outer scanlines / data lines projecting from the eye -->
-      <line x1="100" y1="75" x2="100" y2="45" stroke="#00FF66" stroke-opacity="0.3" stroke-width="1" stroke-dasharray="2 2" />
-      <line x1="100" y1="105" x2="100" y2="155" stroke="#00FF66" stroke-opacity="0.3" stroke-width="1" stroke-dasharray="2 2" />
-      
-      <!-- Bottom Layer / Foundation -->
-      <path d="M 50 125 L 100 150 L 150 125" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="1.5" />
-      <path d="M 50 135 L 100 160 L 150 135" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.5" />
-      
-      <!-- Corner Dots for precision look -->
-      <circle cx="100" cy="10" r="2.5" fill="#00FF66" />
-      <circle cx="20" cy="55" r="2" fill="#ffffff" fill-opacity="0.3" />
-      <circle cx="180" cy="55" r="2" fill="#ffffff" fill-opacity="0.3" />
-      <circle cx="20" cy="145" r="2" fill="#ffffff" fill-opacity="0.3" />
-      <circle cx="180" cy="145" r="2" fill="#ffffff" fill-opacity="0.3" />
-      <circle cx="100" cy="190" r="2" fill="#ffffff" fill-opacity="0.3" />
-    </g>
-
-    <!-- RIGHT: LOGO TYPOGRAPHY -->
-    <g transform="translate(230, 60)">
-      <!-- Main Brand Name -->
-      <text x="0" y="45" font-family="'Courier New', Courier, monospace" font-weight="900" font-size="62" fill="#ffffff" letter-spacing="1">DB-Eye</text>
-      
-      <!-- Accent Terminal Cursor Block after text -->
-      <rect x="235" y="3" width="22" height="48" fill="#00FF66" />
-      
-      <!-- Subtitle -->
-      <text x="2" y="80" font-family="monospace" font-size="13" fill="#ffffff" fill-opacity="0.4" letter-spacing="6">DATABASE BROWSER FOR TERMINALS</text>
-      
-      <!-- Details and Supported DB Badges -->
-      <g transform="translate(2, 105)" font-family="monospace" font-size="9" fill-opacity="0.6">
-        <!-- SQLite Badge -->
-        <rect x="0" y="0" width="62" height="18" rx="3" fill="#1b1c21" stroke="#ffffff" stroke-opacity="0.1" />
-        <text x="31" y="12" fill="#ffffff" text-anchor="middle">SQLITE</text>
-
-        <!-- PostgreSQL Badge -->
-        <rect x="70" y="0" width="90" height="18" rx="3" fill="#1b1c21" stroke="#ffffff" stroke-opacity="0.1" />
-        <text x="115" y="12" fill="#ffffff" text-anchor="middle">POSTGRESQL</text>
-
-        <!-- MySQL Badge -->
-        <rect x="168" y="0" width="56" height="18" rx="3" fill="#1b1c21" stroke="#ffffff" stroke-opacity="0.1" />
-        <text x="196" y="12" fill="#ffffff" text-anchor="middle">MYSQL</text>
-      </g>
-    </g>
-
+    <!-- bottom DB layer / foundation -->
+    <path d="M 28 72 L 55 86 L 82 72"
+      fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="1.5" />
   </g>
 
-  <!-- Technical Spec & Info Footer Panel -->
-  <g transform="translate(45, 460)" font-family="monospace" font-size="10" fill="#ffffff" fill-opacity="0.4">
-    <!-- Line dividers -->
-    <line x1="0" y1="0" x2="710" y2="0" stroke="#ffffff" stroke-opacity="0.1" stroke-width="1" />
-    
-    <!-- Specs Column 1 -->
-    <text x="0" y="25" fill="#00FF66" font-weight="bold">DESIGN SYSTEM VALUES</text>
-    <text x="0" y="45">Canvas: Dark Charcoal (#0B0C0E)</text>
-    <text x="0" y="60">Accent: Terminal Green (#00FF66)</text>
-    <text x="0" y="75">Secondary: Warm White (#FFFFFF)</text>
-
-    <!-- Specs Column 2 -->
-    <text x="280" y="25" fill="#00FF66" font-weight="bold">CORE METAPHOR</text>
-    <text x="280" y="45">Database Structure (Isometric cylinders)</text>
-    <text x="280" y="60">Precise Inspection (Focus lens eye path)</text>
-    <text x="280" y="75">Active Operation (Terminal cursor block)</text>
-
-    <!-- Specs Column 3 -->
-    <text x="560" y="25" fill="#00FF66" font-weight="bold">UTILITY &amp; SAFETY</text>
-    <text x="560" y="45">Keyboard-driven (Vim motion)</text>
-    <text x="560" y="60">Read-Only Guard Enabled</text>
-    <text x="560" y="75">Multi-connection Tabbed TUI</text>
-  </g>
-
-  <!-- Mini Terminal prompt mockup inside presentation -->
-  <g transform="translate(565, 30)">
-    <rect x="0" y="0" width="190" height="20" rx="3" fill="#15171c" stroke="#ffffff" stroke-opacity="0.1" />
-    <circle cx="8" cy="10" r="3" fill="#ff5f56" />
-    <circle cx="18" cy="10" r="3" fill="#ffbd2e" />
-    <circle cx="28" cy="10" r="3" fill="#27c93f" />
-    <text x="42" y="13" font-family="monospace" font-size="9" fill="#00FF66">$ db-eye --read-only</text>
+  <!-- Wordmark -->
+  <g transform="translate(140, 0)">
+    <text x="0" y="70" font-family="'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace"
+      font-weight="700" font-size="46" fill="#0C0D0E">DB-Eye</text>
+    <rect x="217" y="30" width="16" height="40" fill="url(#green)" />
+    <text x="2" y="95" font-family="'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace"
+      font-size="12" letter-spacing="2" fill="#666666">TERMINAL DATABASE BROWSER</text>
   </g>
 </svg>

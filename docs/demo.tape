@@ -2,7 +2,7 @@ Output docs/demo.gif
 
 Set Shell "bash"
 Set FontSize 16
-Set FontFamily "JetBrains Mono"
+Set FontFamily "JetBrainsMono Nerd Font Mono"
 Set Width 1200
 Set Height 700
 Set Padding 20
