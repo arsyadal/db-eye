@@ -597,6 +597,103 @@ impl DbClient {
         Ok(result.rows_affected())
     }
 
+    pub async fn table_stats(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+    ) -> Result<TableStats, sqlx::Error> {
+        match self.db_type {
+            DbType::Sqlite => {
+                let sql = format!("PRAGMA index_list(\"{}\")", table);
+                let idx_rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
+                let mut indexes = Vec::new();
+                for idx_row in &idx_rows {
+                    let name = row_cell(idx_row, 1);
+                    let unique = row_cell(idx_row, 2) == "1";
+                    let cols_sql = format!("PRAGMA index_info(\"{}\")", name);
+                    let col_rows = sqlx::query(&cols_sql)
+                        .fetch_all(&self.pool)
+                        .await
+                        .unwrap_or_default();
+                    let cols: Vec<String> = col_rows.iter().map(|r| row_cell(r, 2)).collect();
+                    let suffix = if unique { " UNIQUE" } else { "" };
+                    indexes.push(format!("{} ({}){}", name, cols.join(", "), suffix));
+                }
+                Ok(TableStats {
+                    indexes,
+                    size_label: None,
+                })
+            }
+            DbType::Postgres => {
+                let schema_name = schema.unwrap_or("public");
+                let sql = format!(
+                    "SELECT indexname::text, indexdef::text FROM pg_indexes \
+                     WHERE schemaname = '{schema_name}' AND tablename = '{table}'"
+                );
+                let idx_rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
+                let indexes = idx_rows
+                    .iter()
+                    .map(|r| {
+                        let name = row_cell(r, 0);
+                        let def = row_cell(r, 1);
+                        if def.to_uppercase().contains("UNIQUE") {
+                            format!("{name} UNIQUE")
+                        } else {
+                            name
+                        }
+                    })
+                    .collect();
+                let size_sql = format!(
+                    "SELECT pg_size_pretty(pg_total_relation_size('{}.{}'))",
+                    self.quote_ident(schema_name),
+                    self.quote_ident(table)
+                );
+                let size_label = sqlx::query(&size_sql)
+                    .fetch_one(&self.pool)
+                    .await
+                    .ok()
+                    .map(|r| row_cell(&r, 0));
+                Ok(TableStats {
+                    indexes,
+                    size_label,
+                })
+            }
+            DbType::Mysql => {
+                let idx_sql = format!(
+                    "SELECT index_name, non_unique, GROUP_CONCAT(column_name ORDER BY seq_in_index) \
+                     FROM information_schema.statistics \
+                     WHERE table_schema = DATABASE() AND table_name = '{table}' \
+                     GROUP BY index_name, non_unique"
+                );
+                let idx_rows = sqlx::query(&idx_sql).fetch_all(&self.pool).await?;
+                let indexes = idx_rows
+                    .iter()
+                    .map(|r| {
+                        let name = row_cell(r, 0);
+                        let non_unique = row_cell(r, 1) == "1";
+                        let cols = row_cell(r, 2);
+                        let suffix = if non_unique { "" } else { " UNIQUE" };
+                        format!("{name} ({cols}){suffix}")
+                    })
+                    .collect();
+                let size_sql = format!(
+                    "SELECT data_length + index_length FROM information_schema.tables \
+                     WHERE table_schema = DATABASE() AND table_name = '{table}'"
+                );
+                let size_label = sqlx::query(&size_sql)
+                    .fetch_one(&self.pool)
+                    .await
+                    .ok()
+                    .and_then(|r| row_cell(&r, 0).parse::<i64>().ok())
+                    .map(format_bytes);
+                Ok(TableStats {
+                    indexes,
+                    size_label,
+                })
+            }
+        }
+    }
+
     pub async fn count_rows(&self, schema: Option<&str>, table: &str) -> Result<i64, sqlx::Error> {
         let sql = match self.db_type {
             DbType::Postgres => {
@@ -629,6 +726,26 @@ pub struct QueryResult {
 pub struct TableEntry {
     pub name: String,
     pub is_view: bool,
+}
+
+pub struct TableStats {
+    pub indexes: Vec<String>,
+    pub size_label: Option<String>,
+}
+
+fn format_bytes(bytes: i64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut size = bytes as f64;
+    let mut unit = 0;
+    while size >= 1024.0 && unit < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} {}", UNITS[unit])
+    } else {
+        format!("{size:.1} {}", UNITS[unit])
+    }
 }
 
 #[derive(Clone)]

@@ -47,7 +47,7 @@ Target dokumen ini adalah daftar fitur yang perlu diimplementasikan atau bisa di
 ### 3. Schema dan Primary Key Handling
 
 - PostgreSQL: support schema selain `public`.
-- MySQL: support database/table metadata lebih lengkap.
+- MySQL: support database/table metadata lebih lengkap. ✅ initial implementation (nullable/default, type precision, views, index/size stats)
 - Support composite primary key untuk update/delete.
 - Jika table tidak punya primary key:
   - tampilkan warning

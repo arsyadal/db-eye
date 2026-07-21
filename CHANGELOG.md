@@ -42,6 +42,15 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
 - GitHub Actions CI untuk fmt, clippy, test, dan release build.
 - Direct PostgreSQL/MySQL connection URL input on the Connect screen.
 - Terminal demo GIF in README (`docs/demo.tape`, recorded with `vhs`).
+- Richer column metadata (SQLite/PostgreSQL/MySQL):
+  - Required (`*`) and default-value indicators on insert/update form fields.
+  - Declared length/precision in the displayed column type (e.g. `varchar(255)`, `numeric(10,2)`).
+- Views listed alongside tables in the Tables panel, labeled `(view)` (previously silently mixed in unlabeled for MySQL, silently excluded for SQLite/PostgreSQL).
+- Table stats popup (`s` in the data panel): index list and approximate on-disk size.
+
+### Fixed
+
+- Data panel status hint mislabeled `e` as export (`e` is inline cell edit; `v` is CSV export).
 
 ### Changed
 
