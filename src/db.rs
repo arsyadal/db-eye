@@ -347,6 +347,8 @@ impl DbClient {
                     .map(|r| {
                         let name = row_cell(r, 1);
                         let data_type = row_cell(r, 2);
+                        let notnull = r.try_get::<i64, _>(3).unwrap_or(0);
+                        let dflt_value = row_cell(r, 4);
                         let pk = r.try_get::<i64, _>(5).unwrap_or(0);
                         ColumnInfo {
                             name,
@@ -355,6 +357,12 @@ impl DbClient {
                             pk_order: pk,
                             fk_table: None,
                             fk_column: None,
+                            is_nullable: notnull == 0,
+                            default_value: if dflt_value.is_empty() {
+                                None
+                            } else {
+                                Some(dflt_value)
+                            },
                         }
                     })
                     .collect();
@@ -384,7 +392,8 @@ impl DbClient {
                 let sql = format!(
                     "SELECT c.column_name::text, c.data_type::text, \
                      CASE WHEN pk.column_name IS NOT NULL THEN 1 ELSE 0 END, \
-                     COALESCE(pk.ordinal_position, 0)::text \
+                     COALESCE(pk.ordinal_position, 0)::text, \
+                     c.is_nullable::text, COALESCE(c.column_default::text, '') \
                      FROM information_schema.columns c \
                      LEFT JOIN ( \
                          SELECT kcu.column_name, kcu.ordinal_position \
@@ -402,13 +411,22 @@ impl DbClient {
                 let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
                 let mut cols: Vec<ColumnInfo> = rows
                     .iter()
-                    .map(|r| ColumnInfo {
-                        name: row_cell(r, 0),
-                        data_type: row_cell(r, 1),
-                        is_pk: row_cell(r, 2) == "1",
-                        pk_order: row_cell(r, 3).parse::<i64>().unwrap_or(0),
-                        fk_table: None,
-                        fk_column: None,
+                    .map(|r| {
+                        let default_value = row_cell(r, 5);
+                        ColumnInfo {
+                            name: row_cell(r, 0),
+                            data_type: row_cell(r, 1),
+                            is_pk: row_cell(r, 2) == "1",
+                            pk_order: row_cell(r, 3).parse::<i64>().unwrap_or(0),
+                            fk_table: None,
+                            fk_column: None,
+                            is_nullable: row_cell(r, 4) == "YES",
+                            default_value: if default_value.is_empty() {
+                                None
+                            } else {
+                                Some(default_value)
+                            },
+                        }
                     })
                     .collect();
                 let fk_sql = format!(
@@ -441,7 +459,8 @@ impl DbClient {
             DbType::Mysql => {
                 let sql = format!(
                     "SELECT c.column_name, c.data_type, IF(kcu.column_name IS NULL,'0','1'), \
-                     COALESCE(kcu.ordinal_position, 0) \
+                     COALESCE(kcu.ordinal_position, 0), \
+                     c.is_nullable, COALESCE(c.column_default, '') \
                      FROM information_schema.columns c \
                      LEFT JOIN information_schema.key_column_usage kcu \
                        ON c.table_schema = kcu.table_schema \
@@ -455,13 +474,22 @@ impl DbClient {
                 let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
                 let mut cols: Vec<ColumnInfo> = rows
                     .iter()
-                    .map(|r| ColumnInfo {
-                        name: row_cell(r, 0),
-                        data_type: row_cell(r, 1),
-                        is_pk: row_cell(r, 2) == "1",
-                        pk_order: row_cell(r, 3).parse::<i64>().unwrap_or(0),
-                        fk_table: None,
-                        fk_column: None,
+                    .map(|r| {
+                        let default_value = row_cell(r, 5);
+                        ColumnInfo {
+                            name: row_cell(r, 0),
+                            data_type: row_cell(r, 1),
+                            is_pk: row_cell(r, 2) == "1",
+                            pk_order: row_cell(r, 3).parse::<i64>().unwrap_or(0),
+                            fk_table: None,
+                            fk_column: None,
+                            is_nullable: row_cell(r, 4) == "YES",
+                            default_value: if default_value.is_empty() {
+                                None
+                            } else {
+                                Some(default_value)
+                            },
+                        }
                     })
                     .collect();
                 let fk_sql = format!(
@@ -564,6 +592,8 @@ pub struct ColumnInfo {
     pub pk_order: i64,
     pub fk_table: Option<String>,
     pub fk_column: Option<String>,
+    pub is_nullable: bool,
+    pub default_value: Option<String>,
 }
 
 impl ColumnInfo {
@@ -586,6 +616,12 @@ impl ColumnInfo {
 
     pub fn is_binary(&self) -> bool {
         is_binary_type(&self.normalized_type())
+    }
+
+    /// True when a value must be supplied on insert: not nullable, no default, and not a PK
+    /// (PKs get their own read-only/auto-generated handling in the CRUD form).
+    pub fn is_required(&self) -> bool {
+        !self.is_nullable && self.default_value.is_none() && !self.is_pk
     }
 
     pub fn validate_input(&self, value: &str) -> Result<(), String> {
