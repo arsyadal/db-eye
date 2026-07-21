@@ -9,7 +9,7 @@ impl App {
             return;
         }
         let table = match self.current_tab().and_then(|t| t.tables.get(t.table_index)) {
-            Some(t) => t.clone(),
+            Some(t) => t.name.clone(),
             None => return,
         };
         if let Some(tab) = self.tabs.get(self.active_tab) {
@@ -65,7 +65,7 @@ impl App {
                 None => return,
             };
             let table = match tab.tables.get(tab.table_index) {
-                Some(t) => t.clone(),
+                Some(t) => t.name.clone(),
                 None => return,
             };
             let row = match tab.display_rows().get(tab.selected_row) {
@@ -166,7 +166,7 @@ impl App {
                 None => return,
             };
             let table = match tab.tables.get(tab.table_index) {
-                Some(t) => t.clone(),
+                Some(t) => t.name.clone(),
                 None => return,
             };
             let row = match tab.display_rows().get(tab.selected_row) {

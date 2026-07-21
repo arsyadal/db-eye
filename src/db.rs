@@ -167,21 +167,42 @@ impl DbClient {
         }
     }
 
-    pub async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<String>, sqlx::Error> {
+    pub async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<TableEntry>, sqlx::Error> {
         let sql = match self.db_type {
-            DbType::Sqlite => "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name".to_string(),
+            DbType::Sqlite => "SELECT name, type FROM sqlite_master \
+                 WHERE type IN ('table', 'view') ORDER BY name"
+                .to_string(),
             DbType::Postgres => {
+                let schema_name = schema.unwrap_or("public");
                 format!(
-                    "SELECT tablename::text FROM pg_tables WHERE schemaname='{}' ORDER BY tablename",
-                    schema.unwrap_or("public")
+                    "SELECT name, is_view FROM ( \
+                         SELECT tablename::text AS name, false AS is_view \
+                         FROM pg_tables WHERE schemaname = '{schema_name}' \
+                         UNION ALL \
+                         SELECT viewname::text AS name, true AS is_view \
+                         FROM pg_views WHERE schemaname = '{schema_name}' \
+                     ) t ORDER BY name"
                 )
             }
-            DbType::Mysql => {
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name".to_string()
-            }
+            DbType::Mysql => "SELECT table_name, IF(table_type = 'VIEW', 1, 0) \
+                 FROM information_schema.tables WHERE table_schema = DATABASE() \
+                 ORDER BY table_name"
+                .to_string(),
         };
         let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
-        Ok(rows.iter().map(|r| row_cell(r, 0)).collect())
+        Ok(rows
+            .iter()
+            .map(|r| {
+                let is_view = match self.db_type {
+                    DbType::Sqlite => row_cell(r, 1) == "view",
+                    _ => matches!(row_cell(r, 1).as_str(), "1" | "true" | "t"),
+                };
+                TableEntry {
+                    name: row_cell(r, 0),
+                    is_view,
+                }
+            })
+            .collect())
     }
 
     pub async fn query_table(
@@ -602,6 +623,12 @@ pub struct QueryResult {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
     pub rows_affected: u64,
+}
+
+#[derive(Clone)]
+pub struct TableEntry {
+    pub name: String,
+    pub is_view: bool,
 }
 
 #[derive(Clone)]

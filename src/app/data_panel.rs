@@ -180,7 +180,7 @@ impl App {
                 None => return,
             };
             let table = match tab.tables.get(tab.table_index) {
-                Some(t) => t.clone(),
+                Some(t) => t.name.clone(),
                 None => return,
             };
             let row = match tab.display_rows().get(row_idx) {
