@@ -878,7 +878,7 @@ fn draw_crud_form(f: &mut Frame, app: &App) {
             .as_deref()
             .map(|t| {
                 format!(
-                    " {} ({}) → {} | {}{} ",
+                    " {} ({}) → {} | ←/→:pick  {}{} ",
                     name_label,
                     col.data_type,
                     t,
@@ -921,12 +921,23 @@ fn draw_crud_form(f: &mut Frame, app: &App) {
 
     // FK hint (valid values for active FK field)
     if hint_height > 0 {
-        let vals_text = active_hints.to_vec().join("  |  ");
+        let mut spans = vec![Span::raw("  ")];
+        for (i, val) in active_hints.iter().enumerate() {
+            if i > 0 {
+                spans.push(Span::raw("  |  "));
+            }
+            let style = if i == form.fk_hint_index {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            };
+            spans.push(Span::styled(val.as_str(), style));
+        }
         f.render_widget(
-            Paragraph::new(format!("  {}", vals_text)).block(
+            Paragraph::new(Line::from(spans)).block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(" Valid Values ")
+                    .title(" Valid Values — ←/→: pick ")
                     .border_style(Style::default().fg(Color::DarkGray)),
             ),
             chunks[1],
@@ -1074,6 +1085,7 @@ fn draw_help_popup(f: &mut Frame) {
             Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
         )),
         Line::from(" Tab        Next field"),
+        Line::from(" ← / →      Pick a FK value (on FK fields)"),
         Line::from(" Enter      Confirm / Save"),
         Line::from(" y / n      Confirm Delete (Yes/No)"),
     ];

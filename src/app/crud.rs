@@ -12,6 +12,7 @@ pub struct CrudForm {
     pub columns: Vec<ColumnInfo>,
     pub values: Vec<String>,
     pub fk_hints: Vec<Vec<String>>,
+    pub fk_hint_index: usize,
     pub pk_values: Vec<(String, String)>,
     pub active_field: usize,
     pub mode: CrudMode,
@@ -222,6 +223,7 @@ impl CrudForm {
         } else if !editable.is_empty() {
             self.active_field = editable[0];
         }
+        self.fk_hint_index = 0;
     }
 
     pub fn prev_field(&mut self) {
@@ -234,6 +236,28 @@ impl CrudForm {
             }];
         } else if !editable.is_empty() {
             self.active_field = editable[0];
+        }
+        self.fk_hint_index = 0;
+    }
+
+    /// Cycles the FK dropdown for the active field and writes the selected value into it.
+    /// No-op if the active field isn't a FK column or has no known values to pick from.
+    pub fn cycle_fk_hint(&mut self, forward: bool) {
+        let hints = match self.fk_hints.get(self.active_field) {
+            Some(h) if !h.is_empty() => h,
+            _ => return,
+        };
+        self.fk_hint_index = if forward {
+            (self.fk_hint_index + 1) % hints.len()
+        } else if self.fk_hint_index == 0 {
+            hints.len() - 1
+        } else {
+            self.fk_hint_index - 1
+        };
+        if let Some(value) = hints.get(self.fk_hint_index)
+            && let Some(slot) = self.values.get_mut(self.active_field)
+        {
+            *slot = value.clone();
         }
     }
 }
@@ -270,6 +294,7 @@ mod tests {
             columns: vec![col("id", true), col("name", false), col("email", false)],
             values: vec!["1".to_string(), "Ada".to_string(), "\\null".to_string()],
             fk_hints: vec![vec![], vec![], vec![]],
+            fk_hint_index: 0,
             pk_values: vec![("id".to_string(), "1".to_string())],
             active_field: 1,
             mode,
@@ -364,6 +389,7 @@ mod tests {
             ],
             values: vec!["t1".to_string(), "u1".to_string(), "Ada".to_string()],
             fk_hints: vec![vec![], vec![], vec![]],
+            fk_hint_index: 0,
             pk_values: vec![
                 ("tenant_id".to_string(), "t1".to_string()),
                 ("user_id".to_string(), "u1".to_string()),
@@ -484,6 +510,7 @@ mod tests {
             columns: columns.clone(),
             values: vec!["t1".to_string(), "u1".to_string(), "Ada".to_string()],
             fk_hints: vec![vec![], vec![], vec![]],
+            fk_hint_index: 0,
             pk_values: vec![],
             active_field: 2,
             mode: CrudMode::Insert,
@@ -504,6 +531,7 @@ mod tests {
             columns,
             values: vec!["t1".to_string(), "u1".to_string(), "Grace".to_string()],
             fk_hints: vec![vec![], vec![], vec![]],
+            fk_hint_index: 0,
             pk_values: vec![
                 ("tenant_id".to_string(), "t1".to_string()),
                 ("user_id".to_string(), "u1".to_string()),

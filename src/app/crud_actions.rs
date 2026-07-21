@@ -41,6 +41,7 @@ impl App {
                         columns,
                         values,
                         fk_hints,
+                        fk_hint_index: 0,
                         pk_values: vec![],
                         mode: CrudMode::Insert,
                         ident_quote: tab.db.identifier_quote(),
@@ -142,6 +143,7 @@ impl App {
                         columns,
                         values,
                         fk_hints,
+                        fk_hint_index: 0,
                         pk_values,
                         mode: CrudMode::Update,
                         ident_quote: tab.db.identifier_quote(),
@@ -264,6 +266,16 @@ impl App {
             KeyCode::BackTab | KeyCode::Up => {
                 if let Some(ref mut form) = self.crud_form {
                     form.prev_field();
+                }
+            }
+            KeyCode::Right => {
+                if let Some(ref mut form) = self.crud_form {
+                    form.cycle_fk_hint(true);
+                }
+            }
+            KeyCode::Left => {
+                if let Some(ref mut form) = self.crud_form {
+                    form.cycle_fk_hint(false);
                 }
             }
             KeyCode::Char(c) => {

@@ -51,6 +51,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
 - Per-column sorting (`o` in the data panel): cycles asc → desc → off, implemented as a DB-side `ORDER BY` so it stays correct across pagination.
 - Explicit pagination controls: `PageUp`/`PageDown` for full-page jumps, `g` to jump to a specific row number.
 - Search now shows a live match count in the status bar instead of a stale pre-search message.
+- FK dropdown on insert/update forms: `←`/`→` cycles known foreign-key values directly into the field, instead of only showing them as a hint you had to type manually.
 
 ### Fixed
 

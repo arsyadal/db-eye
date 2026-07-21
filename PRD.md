@@ -88,7 +88,7 @@ The goal of this document is to list the features that still need to be implemen
 - Insert/update form with:
   - required/not-null indicator
   - default value indicator
-  - FK dropdown/select, not just a hint
+  - FK dropdown/select, not just a hint ✅ `←`/`→` cycles known values into the field
   - reset field
   - clear-to-NULL shortcut
 - Correctly support multi-character paste.
