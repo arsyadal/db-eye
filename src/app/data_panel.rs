@@ -138,6 +138,32 @@ impl App {
             KeyCode::Char('o') => {
                 self.toggle_sort_column().await;
             }
+            KeyCode::PageDown => {
+                let page_size = self.page_size;
+                let can_advance = self
+                    .current_tab()
+                    .map(|t| (t.row_offset + page_size) as i64 <= t.total_rows)
+                    .unwrap_or(false);
+                if can_advance {
+                    if let Some(t) = self.current_tab_mut() {
+                        t.row_offset += page_size;
+                        t.selected_row = 0;
+                    }
+                    self.load_table_data().await;
+                }
+            }
+            KeyCode::PageUp => {
+                let page_size = self.page_size;
+                if let Some(t) = self.current_tab_mut() {
+                    t.row_offset = t.row_offset.saturating_sub(page_size);
+                    t.selected_row = 0;
+                }
+                self.load_table_data().await;
+            }
+            KeyCode::Char('g') => {
+                self.jump_input.clear();
+                self.screen = Screen::Jump;
+            }
             KeyCode::Char('i') => {
                 if self.read_only {
                     self.read_only_block();

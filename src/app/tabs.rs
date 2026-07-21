@@ -118,9 +118,9 @@ impl Tab {
 impl App {
     fn data_help(&self) -> &'static str {
         if self.read_only {
-            "READ-ONLY  |  j/k:nav  o:sort  v:export  s:stats  /:search  :::query  Ctrl+H:history  Esc:back"
+            "READ-ONLY  |  j/k:nav  PgUp/PgDn:page  g:jump  o:sort  v:export  s:stats  /:search  :::query  Ctrl+H:history  Esc:back"
         } else {
-            "j/k:nav  i:insert  u:update  d:delete  e:edit  o:sort  v:export  s:stats  /:search  :::query  Ctrl+H:history  Esc:back"
+            "j/k:nav  i:insert  u:update  d:delete  e:edit  PgUp/PgDn:page  g:jump  o:sort  v:export  s:stats  /:search  :::query  Ctrl+H:history  Esc:back"
         }
     }
 
@@ -386,9 +386,9 @@ impl App {
                     tab.search_query.clear();
                     tab.update_filter();
                     let actions = if self.read_only {
-                        "READ-ONLY  /:search  o:sort  v:csv  s:stats  ::sql  Ctrl+H:history  q:back"
+                        "READ-ONLY  /:search  o:sort  PgUp/PgDn:page  g:jump  v:csv  s:stats  ::sql  Ctrl+H:history  q:back"
                     } else {
-                        "i:insert  u:update  d:delete  e:edit  /:search  o:sort  v:csv  s:stats  ::sql  Ctrl+H:history  q:back"
+                        "i:insert  u:update  d:delete  e:edit  /:search  o:sort  PgUp/PgDn:page  g:jump  v:csv  s:stats  ::sql  Ctrl+H:history  q:back"
                     };
                     self.status = format!(
                         "{}  |  {} rows  |  Tab:focus  j/k:scroll  h/l:cols  {}",
@@ -397,6 +397,35 @@ impl App {
                 }
                 Err(e) => self.status = format_db_error("Loading table data", &e),
             }
+        }
+    }
+
+    pub(super) async fn handle_jump(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Char(c) if c.is_ascii_digit() => {
+                self.jump_input.push(c);
+            }
+            KeyCode::Backspace => {
+                self.jump_input.pop();
+            }
+            KeyCode::Enter => {
+                let row_num: usize = self.jump_input.trim().parse().unwrap_or(0);
+                self.jump_input.clear();
+                self.screen = Screen::Main;
+                if row_num == 0 {
+                    return;
+                }
+                if let Some(tab) = self.current_tab_mut() {
+                    tab.row_offset = row_num.saturating_sub(1);
+                    tab.selected_row = 0;
+                }
+                self.load_table_data().await;
+            }
+            KeyCode::Esc => {
+                self.jump_input.clear();
+                self.screen = Screen::Main;
+            }
+            _ => {}
         }
     }
 

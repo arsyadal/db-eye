@@ -38,6 +38,10 @@ pub fn draw(f: &mut Frame, app: &App) {
             draw_main(f, app);
             draw_table_stats_popup(f, app);
         }
+        Screen::Jump => {
+            draw_main(f, app);
+            draw_jump_bar(f, app);
+        }
     }
 }
 
@@ -775,6 +779,26 @@ fn draw_search_bar(f: &mut Frame, app: &App) {
     ));
 }
 
+fn draw_jump_bar(f: &mut Frame, app: &App) {
+    let area = f.area();
+    let bar_area = Rect {
+        x: 22,
+        y: area.height.saturating_sub(6),
+        width: area.width.saturating_sub(22),
+        height: 3,
+    };
+    f.render_widget(Clear, bar_area);
+    f.render_widget(
+        Paragraph::new(format!("Row #{}_", app.jump_input)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Jump to row — Enter/Esc: close "),
+        ),
+        bar_area,
+    );
+    f.set_cursor_position((bar_area.x + app.jump_input.len() as u16 + 6, bar_area.y + 1));
+}
+
 fn draw_crud_form(f: &mut Frame, app: &App) {
     let form = match app.crud_form.as_ref() {
         Some(f) => f,
@@ -1042,6 +1066,8 @@ fn draw_help_popup(f: &mut Frame) {
         Line::from(" v          Export current view to CSV"),
         Line::from(" s          Show table stats (indexes, size)"),
         Line::from(" o          Sort by column under cursor (asc/desc/off)"),
+        Line::from(" PgUp/PgDn  Previous / next page"),
+        Line::from(" g          Jump to row number"),
         Line::from(""),
         Line::from(Span::styled(
             " Form / Dialogs ",

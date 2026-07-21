@@ -205,6 +205,14 @@ impl App {
             tab.search_query = q;
             tab.update_filter();
         }
+        if let Some(tab) = self.current_tab() {
+            let page_len = tab.result.as_ref().map(|r| r.rows.len()).unwrap_or(0);
+            self.status = format!(
+                "{} of {} rows on this page match",
+                tab.filtered_rows.len(),
+                page_len
+            );
+        }
     }
 }
 

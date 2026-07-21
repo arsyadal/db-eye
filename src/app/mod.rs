@@ -34,6 +34,7 @@ pub enum Screen {
     Help,
     QueryHistory,
     TableStats,
+    Jump,
 }
 
 pub struct App {
@@ -48,6 +49,7 @@ pub struct App {
     pub server_conn: Option<ServerConn>,
     pub query_input: String,
     pub search_input: String,
+    pub jump_input: String,
     pub query_history: Vec<QueryHistoryEntry>,
     pub history_index: usize,
     pub status: String,
@@ -79,6 +81,7 @@ impl App {
             server_conn: None,
             query_input: String::new(),
             search_input: String::new(),
+            jump_input: String::new(),
             query_history: vec![],
             history_index: 0,
             status: status.into(),
@@ -133,6 +136,7 @@ impl App {
                     Screen::Help => self.handle_help(key.code),
                     Screen::QueryHistory => self.handle_query_history(key.code).await,
                     Screen::TableStats => self.handle_table_stats(key.code),
+                    Screen::Jump => self.handle_jump(key.code).await,
                 }
             }
         }
