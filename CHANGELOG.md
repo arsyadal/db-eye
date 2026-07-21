@@ -8,6 +8,21 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
 
 ### Added
 
+- Export and Import UI & Options:
+  - Form dialog ekspor via `v` dengan opsi format (CSV, JSON, SQL INSERT).
+  - Opsi delimiter dan header untuk ekspor CSV, serta penamaan file otomatis/kustom.
+  - Impor file CSV ke tabel database yang aktif via `I` (Shift+I) dengan deteksi kolom case-insensitive dan pencocokan otomatis.
+  - Preview data sampel (5 baris pertama) dan review pemetaan kolom CSV → DB sebelum ekspor/impor dijalankan.
+- Explain Query Plan:
+  - Dukungan untuk `EXPLAIN` (PostgreSQL/MySQL) dan `EXPLAIN QUERY PLAN` (SQLite) via shortcut `Ctrl+E` dari popup input SQL Query.
+- Named Queries & Env Password:
+  - Dukungan penyimpanan SQL query aktif menjadi named query via `Ctrl+S` di popup Query.
+  - Membuka daftar named query via `Ctrl+N` untuk diload/dihapus (persistensi via file `queries.json` lokal).
+  - Membaca password default dari variable lingkungan `DB_PASSWORD` saat mengisi form koneksi atau parsing URL koneksi.
+- Clipboard Copy Shortcuts:
+  - Shortcut `y` untuk menyalin nilai sel (cell) aktif ke clipboard sistem.
+  - Shortcut `Y` (Shift+Y) untuk menyalin baris (row) aktif (dipisahkan oleh tab) ke clipboard sistem.
+  - Shortcut `C` (Shift+C) untuk menyalin seluruh kolom (column) aktif (dipisahkan oleh newline) ke clipboard sistem.
 - Inline Cell Editing:
   - Edit cell langsung di panel data via `Enter` atau `e`.
   - Simpan perubahan ke database via parameterized `UPDATE`.

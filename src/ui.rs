@@ -46,6 +46,22 @@ pub fn draw(f: &mut Frame, app: &App) {
             draw_crud_form(f, app);
             draw_multiline_editor(f, app);
         }
+        Screen::ExportForm => {
+            draw_main(f, app);
+            draw_export_popup(f, app);
+        }
+        Screen::ImportForm => {
+            draw_main(f, app);
+            draw_import_popup(f, app);
+        }
+        Screen::SaveQueryPrompt => {
+            draw_main(f, app);
+            draw_save_query_prompt(f, app);
+        }
+        Screen::NamedQueriesList => {
+            draw_main(f, app);
+            draw_named_queries_list(f, app);
+        }
     }
 }
 
@@ -674,7 +690,7 @@ fn draw_query_popup(f: &mut Frame, app: &App) {
         Paragraph::new(format!(": {}_", app.query_input)).block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" SQL Query — Enter: run  Esc: cancel "),
+                .title(" SQL Query — Enter: run  Ctrl+E: explain  Esc: cancel "),
         ),
         area,
     );
@@ -826,6 +842,487 @@ fn draw_multiline_editor(f: &mut Frame, app: &App) {
     );
     f.render_widget(para, area);
     f.set_cursor_position((area.x + 1 + col, area.y + 1 + row));
+}
+
+fn draw_export_popup(f: &mut Frame, app: &App) {
+    let form = match &app.export_form {
+        Some(f) => f,
+        None => return,
+    };
+
+    let area = centered_rect(60, 15, f.area());
+    f.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Export Data — Left/Right: change value  Up/Down: move  Esc: cancel ");
+    f.render_widget(block.clone(), area);
+
+    let inner_area = block.inner(area);
+
+    let constraints = if form.format == crate::app::ExportFormat::Csv {
+        vec![
+            Constraint::Length(2),
+            Constraint::Length(2),
+            Constraint::Length(2),
+            Constraint::Length(2),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ]
+    } else {
+        vec![
+            Constraint::Length(2),
+            Constraint::Length(0),
+            Constraint::Length(0),
+            Constraint::Length(2),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ]
+    };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(inner_area);
+
+    // Format Selection (row 0)
+    let format_label = Span::styled("Format:        ", Style::default().add_modifier(Modifier::BOLD));
+    let format_csv = Span::styled(
+        " CSV ",
+        if form.format == crate::app::ExportFormat::Csv {
+            Style::default().fg(Color::Black).bg(if form.active_field == 0 { Color::Yellow } else { Color::Green })
+        } else {
+            Style::default().fg(Color::DarkGray)
+        }
+    );
+    let format_json = Span::styled(
+        " JSON ",
+        if form.format == crate::app::ExportFormat::Json {
+            Style::default().fg(Color::Black).bg(if form.active_field == 0 { Color::Yellow } else { Color::Green })
+        } else {
+            Style::default().fg(Color::DarkGray)
+        }
+    );
+    let format_sql = Span::styled(
+        " SQL ",
+        if form.format == crate::app::ExportFormat::Sql {
+            Style::default().fg(Color::Black).bg(if form.active_field == 0 { Color::Yellow } else { Color::Green })
+        } else {
+            Style::default().fg(Color::DarkGray)
+        }
+    );
+    let format_line = Line::from(vec![
+        format_label,
+        Span::raw(" "),
+        format_csv,
+        Span::raw("    "),
+        format_json,
+        Span::raw("    "),
+        format_sql,
+    ]);
+    f.render_widget(Paragraph::new(format_line), chunks[0]);
+
+    if form.format == crate::app::ExportFormat::Csv {
+        // Delimiter Selection (row 1)
+        let delim_label = Span::styled("CSV Delimiter: ", Style::default().add_modifier(Modifier::BOLD));
+        let delim_comma = Span::styled(
+            " Comma (,) ",
+            if form.csv_delimiter == crate::app::CsvDelimiter::Comma {
+                Style::default().fg(Color::Black).bg(if form.active_field == 1 { Color::Yellow } else { Color::Green })
+            } else {
+                Style::default().fg(Color::DarkGray)
+            }
+        );
+        let delim_semi = Span::styled(
+            " Semicolon (;) ",
+            if form.csv_delimiter == crate::app::CsvDelimiter::Semicolon {
+                Style::default().fg(Color::Black).bg(if form.active_field == 1 { Color::Yellow } else { Color::Green })
+            } else {
+                Style::default().fg(Color::DarkGray)
+            }
+        );
+        let delim_tab = Span::styled(
+            " Tab (\\t) ",
+            if form.csv_delimiter == crate::app::CsvDelimiter::Tab {
+                Style::default().fg(Color::Black).bg(if form.active_field == 1 { Color::Yellow } else { Color::Green })
+            } else {
+                Style::default().fg(Color::DarkGray)
+            }
+        );
+        let delim_line = Line::from(vec![
+            delim_label,
+            Span::raw(" "),
+            delim_comma,
+            Span::raw("  "),
+            delim_semi,
+            Span::raw("  "),
+            delim_tab,
+        ]);
+        f.render_widget(Paragraph::new(delim_line), chunks[1]);
+
+        // Headers (row 2)
+        let headers_label = Span::styled("CSV Headers:   ", Style::default().add_modifier(Modifier::BOLD));
+        let headers_yes = Span::styled(
+            " Yes ",
+            if form.csv_headers {
+                Style::default().fg(Color::Black).bg(if form.active_field == 2 { Color::Yellow } else { Color::Green })
+            } else {
+                Style::default().fg(Color::DarkGray)
+            }
+        );
+        let headers_no = Span::styled(
+            " No ",
+            if !form.csv_headers {
+                Style::default().fg(Color::Black).bg(if form.active_field == 2 { Color::Yellow } else { Color::Green })
+            } else {
+                Style::default().fg(Color::DarkGray)
+            }
+        );
+        let headers_line = Line::from(vec![
+            headers_label,
+            Span::raw(" "),
+            headers_yes,
+            Span::raw("    "),
+            headers_no,
+        ]);
+        f.render_widget(Paragraph::new(headers_line), chunks[2]);
+    }
+
+    // Filename input (row 3)
+    let filename_label = Span::styled("File Name:     ", Style::default().add_modifier(Modifier::BOLD));
+    let filename_style = if form.active_field == 3 {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let filename_line = Line::from(vec![
+        filename_label,
+        Span::styled(&form.filename, filename_style),
+        if form.active_field == 3 { Span::styled("_", Style::default().fg(Color::Yellow)) } else { Span::raw("") }
+    ]);
+    f.render_widget(Paragraph::new(filename_line), chunks[3]);
+
+    // Buttons (row 5)
+    let btn_area = chunks[5];
+    let btn_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(30),
+            Constraint::Length(12),
+            Constraint::Length(4),
+            Constraint::Length(12),
+            Constraint::Min(0),
+        ])
+        .split(btn_area);
+
+    let export_btn_style = if form.active_field == 4 {
+        Style::default().fg(Color::Black).bg(Color::Yellow)
+    } else {
+        Style::default().fg(Color::Green)
+    };
+    f.render_widget(Paragraph::new(" [ Export ] ").style(export_btn_style), btn_layout[1]);
+
+    let cancel_btn_style = if form.active_field == 5 {
+        Style::default().fg(Color::Black).bg(Color::Yellow)
+    } else {
+        Style::default().fg(Color::Red)
+    };
+    f.render_widget(Paragraph::new(" [ Cancel ] ").style(cancel_btn_style), btn_layout[3]);
+}
+
+fn draw_import_popup(f: &mut Frame, app: &App) {
+    let form = match &app.import_form {
+        Some(f) => f,
+        None => return,
+    };
+
+    if !form.preview_mode {
+        let area = centered_rect(60, 15, f.area());
+        f.render_widget(Clear, area);
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Import CSV — Left/Right: change value  Up/Down: move  Esc: cancel ");
+        f.render_widget(block.clone(), area);
+
+        let inner_area = block.inner(area);
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(2),
+                Constraint::Length(2),
+                Constraint::Length(2),
+                Constraint::Min(0),
+                Constraint::Length(1),
+            ])
+            .split(inner_area);
+
+        // File Path (row 0)
+        let path_label = Span::styled("File Path:     ", Style::default().add_modifier(Modifier::BOLD));
+        let path_style = if form.active_field == 0 {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default()
+        };
+        let path_line = Line::from(vec![
+            path_label,
+            Span::styled(&form.filepath, path_style),
+            if form.active_field == 0 { Span::styled("_", Style::default().fg(Color::Yellow)) } else { Span::raw("") }
+        ]);
+        f.render_widget(Paragraph::new(path_line), chunks[0]);
+
+        // Delimiter (row 1)
+        let delim_label = Span::styled("CSV Delimiter: ", Style::default().add_modifier(Modifier::BOLD));
+        let delim_comma = Span::styled(
+            " Comma (,) ",
+            if form.delimiter == crate::app::ImportDelimiter::Comma {
+                Style::default().fg(Color::Black).bg(if form.active_field == 1 { Color::Yellow } else { Color::Green })
+            } else {
+                Style::default().fg(Color::DarkGray)
+            }
+        );
+        let delim_semi = Span::styled(
+            " Semicolon (;) ",
+            if form.delimiter == crate::app::ImportDelimiter::Semicolon {
+                Style::default().fg(Color::Black).bg(if form.active_field == 1 { Color::Yellow } else { Color::Green })
+            } else {
+                Style::default().fg(Color::DarkGray)
+            }
+        );
+        let delim_tab = Span::styled(
+            " Tab (\\t) ",
+            if form.delimiter == crate::app::ImportDelimiter::Tab {
+                Style::default().fg(Color::Black).bg(if form.active_field == 1 { Color::Yellow } else { Color::Green })
+            } else {
+                Style::default().fg(Color::DarkGray)
+            }
+        );
+        let delim_line = Line::from(vec![
+            delim_label,
+            Span::raw(" "),
+            delim_comma,
+            Span::raw("  "),
+            delim_semi,
+            Span::raw("  "),
+            delim_tab,
+        ]);
+        f.render_widget(Paragraph::new(delim_line), chunks[1]);
+
+        // Headers (row 2)
+        let headers_label = Span::styled("CSV Headers:   ", Style::default().add_modifier(Modifier::BOLD));
+        let headers_yes = Span::styled(
+            " Yes ",
+            if form.has_headers {
+                Style::default().fg(Color::Black).bg(if form.active_field == 2 { Color::Yellow } else { Color::Green })
+            } else {
+                Style::default().fg(Color::DarkGray)
+            }
+        );
+        let headers_no = Span::styled(
+            " No ",
+            if !form.has_headers {
+                Style::default().fg(Color::Black).bg(if form.active_field == 2 { Color::Yellow } else { Color::Green })
+            } else {
+                Style::default().fg(Color::DarkGray)
+            }
+        );
+        let headers_line = Line::from(vec![
+            headers_label,
+            Span::raw(" "),
+            headers_yes,
+            Span::raw("    "),
+            headers_no,
+        ]);
+        f.render_widget(Paragraph::new(headers_line), chunks[2]);
+
+        // Error message (row 3)
+        if let Some(err) = &form.error_message {
+            f.render_widget(
+                Paragraph::new(format!("Error: {}", err)).style(Style::default().fg(Color::Red)),
+                chunks[3],
+            );
+        }
+
+        // Buttons (row 4)
+        let btn_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(30),
+                Constraint::Length(12),
+                Constraint::Length(4),
+                Constraint::Length(12),
+                Constraint::Min(0),
+            ])
+            .split(chunks[4]);
+
+        let preview_btn_style = if form.active_field == 3 {
+            Style::default().fg(Color::Black).bg(Color::Yellow)
+        } else {
+            Style::default().fg(Color::Green)
+        };
+        f.render_widget(Paragraph::new(" [ Preview ] ").style(preview_btn_style), btn_layout[1]);
+
+        let cancel_btn_style = if form.active_field == 4 {
+            Style::default().fg(Color::Black).bg(Color::Yellow)
+        } else {
+            Style::default().fg(Color::Red)
+        };
+        f.render_widget(Paragraph::new(" [ Cancel ] ").style(cancel_btn_style), btn_layout[3]);
+    } else {
+        let area = centered_rect(85, 22, f.area());
+        f.render_widget(Clear, area);
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" CSV Import Preview & Column Mapping — Enter: confirm  Esc: back ");
+        f.render_widget(block.clone(), area);
+
+        let inner_area = block.inner(area);
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Length(4),
+                Constraint::Min(0),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ])
+            .split(inner_area);
+
+        let info_line = Line::from(vec![
+            Span::raw("File: "),
+            Span::styled(&form.filepath, Style::default().fg(Color::Cyan)),
+            Span::raw("  |  Parsed: "),
+            Span::styled(format!("{} rows", form.parsed_rows.len()), Style::default().fg(Color::Green)),
+        ]);
+        f.render_widget(Paragraph::new(info_line), chunks[0]);
+
+        let mut mapping_spans = vec![Span::styled("Mapping:  ", Style::default().add_modifier(Modifier::BOLD))];
+        for (csv_col, db_col_opt) in &form.mapped_columns {
+            mapping_spans.push(Span::raw(format!("{} -> ", csv_col)));
+            if let Some(db_col) = db_col_opt {
+                mapping_spans.push(Span::styled(format!("{}  ", db_col), Style::default().fg(Color::Green)));
+            } else {
+                mapping_spans.push(Span::styled("[Skip]  ", Style::default().fg(Color::DarkGray)));
+            }
+        }
+        f.render_widget(Paragraph::new(Line::from(mapping_spans)).wrap(ratatui::widgets::Wrap { trim: true }), chunks[1]);
+
+        let preview_rows = form.parsed_rows.iter().take(5);
+        let headers: Row = Row::new(
+            form.csv_columns.iter().map(|c| Cell::from(c.as_str()).style(Style::default().add_modifier(Modifier::BOLD)))
+        ).style(Style::default().bg(Color::DarkGray));
+
+        let rows: Vec<Row> = preview_rows
+            .map(|r| {
+                Row::new(r.iter().map(|c| Cell::from(c.as_str())))
+            })
+            .collect();
+
+        let num_cols = form.csv_columns.len().max(1);
+        let col_percent = 100 / num_cols as u16;
+        let widths: Vec<Constraint> = (0..num_cols)
+            .map(|_| Constraint::Percentage(col_percent))
+            .collect();
+
+        let table = Table::new(rows, widths)
+            .header(headers)
+            .block(Block::default().borders(Borders::ALL).title(" Sample Data Preview (First 5 rows) "));
+        f.render_widget(table, chunks[2]);
+
+        let btn_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(25),
+                Constraint::Length(20),
+                Constraint::Length(4),
+                Constraint::Length(12),
+                Constraint::Min(0),
+            ])
+            .split(chunks[4]);
+
+        let import_btn_style = if form.active_field == 3 {
+            Style::default().fg(Color::Black).bg(Color::Yellow)
+        } else {
+            Style::default().fg(Color::Green)
+        };
+        f.render_widget(Paragraph::new(" [ Confirm Import ] ").style(import_btn_style), btn_layout[1]);
+
+        let cancel_btn_style = if form.active_field == 4 {
+            Style::default().fg(Color::Black).bg(Color::Yellow)
+        } else {
+            Style::default().fg(Color::Red)
+        };
+        f.render_widget(Paragraph::new(" [ Cancel ] ").style(cancel_btn_style), btn_layout[3]);
+    }
+}
+
+fn draw_save_query_prompt(f: &mut Frame, app: &App) {
+    let area = centered_rect(65, 5, f.area());
+    f.render_widget(Clear, area);
+    f.render_widget(
+        Paragraph::new(format!("Name: {}_", app.save_query_input)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Save SQL Query as Named Query — Enter: save  Esc: cancel "),
+        ),
+        area,
+    );
+    f.set_cursor_position((area.x + app.save_query_input.len() as u16 + 7, area.y + 1));
+}
+
+fn draw_named_queries_list(f: &mut Frame, app: &App) {
+    let area = centered_rect(80, 18, f.area());
+    f.render_widget(Clear, area);
+
+    if app.named_queries.is_empty() {
+        f.render_widget(
+            Paragraph::new("\n  No named queries saved yet. Press Ctrl+S in Query screen to save.").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Named Queries — Esc: close "),
+            ),
+            area,
+        );
+        return;
+    }
+
+    let items: Vec<Row> = app
+        .named_queries
+        .iter()
+        .enumerate()
+        .map(|(i, q)| {
+            let style = if i == app.named_query_index {
+                Style::default().fg(Color::Black).bg(Color::Yellow)
+            } else {
+                Style::default()
+            };
+            Row::new(vec![
+                Cell::from(q.name.as_str()),
+                Cell::from(q.sql.as_str()),
+            ])
+            .style(style)
+        })
+        .collect();
+
+    let table = Table::new(
+        items,
+        [Constraint::Percentage(30), Constraint::Percentage(70)],
+    )
+    .header(
+        Row::new(vec![
+            Cell::from("Name").style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from("SQL").style(Style::default().add_modifier(Modifier::BOLD)),
+        ])
+        .style(Style::default().bg(Color::DarkGray)),
+    )
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Saved Named Queries — Enter: load  Delete: delete  Esc/q: close "),
+    );
+
+    f.render_widget(table, area);
 }
 
 fn draw_crud_form(f: &mut Frame, app: &App) {

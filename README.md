@@ -58,6 +58,12 @@ Or paste a full connection URL in **Connection URL (optional)** and press Enter 
 - `postgres://user:pass@host:5432/dbname`
 - `mysql://user:pass@host:3306/dbname`
 
+You can also set the `DB_PASSWORD` environment variable to automatically supply the password for connections:
+
+```bash
+DB_PASSWORD=secret db-eye postgres://user@host:5432/dbname
+```
+
 Saved connections (`Ctrl+S`) persist to a local JSON file — passwords are never saved:
 
 - macOS/Linux: `~/.config/db-eye/connections.json`
@@ -106,13 +112,27 @@ Saved connections (`Ctrl+S`) persist to a local JSON file — passwords are neve
 | `i` | Insert row (disabled in read-only mode) |
 | `u` | Update selected row (full form) |
 | `d` | Delete selected row (requires PK + confirmation) |
-| `v` | Export visible data to CSV (mnemonic: view/export) |
+| `v` | Export data popup (CSV, JSON, SQL INSERT) |
+| `I` | Import CSV file into active table (disabled in read-only mode) |
+| `y` | Copy selected cell value to clipboard |
+| `Y` | Copy selected row (tab-separated) to clipboard |
+| `C` | Copy selected column (newline-separated) to clipboard |
 | `s` | Show table stats (indexes, approximate size) |
 | `o` | Sort by column under cursor (cycles asc → desc → off) |
 | `PageUp` / `PageDown` | Previous / next page |
 | `g` | Jump to row number |
 | `Tab` | Switch focus to tables panel |
 | `q` / `Esc` | Back to tables panel |
+
+### SQL Query Input
+| Key | Action |
+|-----|--------|
+| `Enter` | Run query |
+| `Ctrl+E` | Explain query plan |
+| `Ctrl+S` | Save query as a Named Query |
+| `Ctrl+N` | Open Saved Named Queries list |
+| `↑` / `↓` | Navigate history |
+| `Esc` | Close input |
 
 ### Query History
 | Key | Action |
@@ -164,7 +184,8 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 - CRUD/edit forms treat empty input or `\\null` as database NULL
 - Foreign-key dropdown (`←`/`→` to pick a value) in insert/update forms
 - Multiline text editor popup (`F2`) for long field values
-- Export query results to CSV
+- Export current view to CSV (with delimiter/header options), JSON, or SQL INSERT statements
+- Import CSV into an existing table with column mapping and data preview
 - Multiple simultaneous DB connections (tabs)
 - PostgreSQL/MySQL: connect via form flow or full connection URL
 - PostgreSQL: connect to server → pick database from list

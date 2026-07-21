@@ -98,14 +98,14 @@ The goal of this document is to list the features that still need to be implemen
 ### 2. Query Experience
 
 - Query history per tab.
-- Save named queries.
+- Save named queries. ✅
 - SQL syntax highlighting.
 - Run the selected statement if the input contains multiple statements.
 - Show rows affected for write queries.
-- Explain query plan:
-  - SQLite `EXPLAIN QUERY PLAN`
-  - PostgreSQL `EXPLAIN`
-  - MySQL `EXPLAIN`
+- Explain query plan: ✅
+  - SQLite `EXPLAIN QUERY PLAN` ✅
+  - PostgreSQL `EXPLAIN` ✅
+  - MySQL `EXPLAIN` ✅
 
 ### 3. Data Browsing
 
@@ -117,24 +117,24 @@ The goal of this document is to list the features that still need to be implemen
   - jump to offset/page
 - Show total filtered rows where possible.
 - Column hide/show.
-- Copy cell/row/column value to clipboard.
+- Copy cell/row/column value to clipboard. ✅
 
 ### 4. Connection Management
 
 - Saved connections/config file.
-- Password via environment variable or secure prompt.
+- Password via environment variable or secure prompt. ✅
 - Manual connection string input. ✅ initial implementation
 - SSH tunnel support.
 - TLS options for PostgreSQL/MySQL.
 - Recent connections list.
 
-### 5. Export/Import
+### 5. Export/Import ✅
 
-- Export CSV with delimiter/header options.
-- Export JSON.
-- Export SQL insert statements.
-- Import CSV into an existing table.
-- Preview before import.
+- Export CSV with delimiter/header options. ✅
+- Export JSON. ✅
+- Export SQL insert statements. ✅
+- Import CSV into an existing table. ✅
+- Preview before import. ✅
 
 ## Priority P2 — Nice to Have
 

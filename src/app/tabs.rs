@@ -1,7 +1,6 @@
 use super::{App, ConnectForm, DbTypeChoice, Focus, Screen, ServerConn};
 use crate::db::{DbClient, QueryResult, TableEntry, format_db_error};
 use crossterm::event::{KeyCode, KeyModifiers};
-use std::fs;
 
 pub struct Tab {
     pub path: String,
@@ -85,33 +84,6 @@ impl Tab {
             .next_back()
             .unwrap_or(&self.path)
             .to_string()
-    }
-
-    pub fn export_csv(&self) -> Result<String, std::io::Error> {
-        let result = match &self.result {
-            Some(r) => r,
-            None => return Err(std::io::Error::other("No data")),
-        };
-        let rows = self.display_rows();
-        let safe_name = self.path.replace(['.', '/', '@', ':'], "_");
-        let filename = format!("{}_export.csv", safe_name.trim_matches('_'));
-        let mut content = result.columns.join(",") + "\n";
-        for row in rows {
-            let line: Vec<String> = row
-                .iter()
-                .map(|cell| {
-                    if cell.contains(',') || cell.contains('"') || cell.contains('\n') {
-                        format!("\"{}\"", cell.replace('"', "\"\""))
-                    } else {
-                        cell.clone()
-                    }
-                })
-                .collect();
-            content += &line.join(",");
-            content += "\n";
-        }
-        fs::write(&filename, content)?;
-        Ok(filename)
     }
 }
 
