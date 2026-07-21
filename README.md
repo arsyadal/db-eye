@@ -2,6 +2,10 @@
 
 <img src="logo.svg" alt="DB-Eye Logo" width="360" />
 
+[![crates.io](https://img.shields.io/crates/v/db-eye.svg)](https://crates.io/crates/db-eye)
+[![CI](https://github.com/arsyadal/db-eye/actions/workflows/ci.yml/badge.svg)](https://github.com/arsyadal/db-eye/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Terminal UI database browser. SQLite, PostgreSQL, MySQL.
 
 ![DB-Eye demo](docs/demo.gif)
@@ -11,6 +15,8 @@ Terminal UI database browser. SQLite, PostgreSQL, MySQL.
 ```bash
 cargo install db-eye
 ```
+
+Requires a Rust toolchain that supports edition 2024 (rustc 1.85+). Runs on macOS, Linux, and Windows.
 
 Or run from source:
 
@@ -29,6 +35,9 @@ db-eye --read-only ./mydb.sqlite
 
 # Launch without args → connect screen
 db-eye
+
+# Show usage
+db-eye --help
 ```
 
 ## Connect Screen
@@ -48,6 +57,11 @@ Or paste a full connection URL in **Connection URL (optional)** and press Enter 
 
 - `postgres://user:pass@host:5432/dbname`
 - `mysql://user:pass@host:3306/dbname`
+
+Saved connections (`Ctrl+S`) persist to a local JSON file — passwords are never saved:
+
+- macOS/Linux: `~/.config/db-eye/connections.json`
+- Windows: `%APPDATA%\db-eye\connections.json`
 
 ## Navigation
 
@@ -141,6 +155,10 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 - PostgreSQL: connect to server → pick database from list
 - Auto column width fitting
 - Monochrome TUI — works in any terminal
+
+## License
+
+[MIT](LICENSE)
 
 ## Development Docs
 
