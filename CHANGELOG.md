@@ -41,6 +41,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
 - Composite primary key support untuk update/delete statements dan SQLite metadata tests.
 - GitHub Actions CI untuk fmt, clippy, test, dan release build.
 - Direct PostgreSQL/MySQL connection URL input on the Connect screen.
+- Terminal demo GIF in README (`docs/demo.tape`, recorded with `vhs`).
 
 ### Changed
 
