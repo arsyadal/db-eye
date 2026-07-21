@@ -1,5 +1,5 @@
 use super::{App, ConnectForm, DbTypeChoice, Focus, Screen, ServerConn};
-use crate::db::{DbClient, QueryResult, format_db_error};
+use crate::db::{DbClient, QueryResult, TableEntry, format_db_error};
 use crossterm::event::{KeyCode, KeyModifiers};
 use std::fs;
 
@@ -8,7 +8,7 @@ pub struct Tab {
     pub db: DbClient,
     pub schemas: Vec<String>,
     pub schema_index: usize,
-    pub tables: Vec<String>,
+    pub tables: Vec<TableEntry>,
     pub table_index: usize,
     pub result: Option<QueryResult>,
     pub filtered_rows: Vec<Vec<String>>,
@@ -286,7 +286,7 @@ impl App {
                 None => return,
             };
             let table = match tab.tables.get(tab.table_index) {
-                Some(t) => t.clone(),
+                Some(t) => t.name.clone(),
                 None => return,
             };
             (

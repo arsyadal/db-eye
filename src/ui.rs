@@ -429,12 +429,17 @@ fn draw_tables_panel(f: &mut Frame, app: &App, area: Rect) {
         .tables
         .iter()
         .enumerate()
-        .map(|(i, name)| {
-            let mut display = name.clone();
-            if display.len() > 18 {
-                display.truncate(17);
-                display.push('…');
+        .map(|(i, entry)| {
+            let mut name = entry.name.clone();
+            if name.len() > 18 {
+                name.truncate(17);
+                name.push('…');
             }
+            let display = if entry.is_view {
+                format!("{} (view)", name)
+            } else {
+                name
+            };
             let style = if i == tab.table_index && focused {
                 Style::default().add_modifier(Modifier::REVERSED)
             } else if i == tab.table_index {
