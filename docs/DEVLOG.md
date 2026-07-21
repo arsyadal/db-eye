@@ -2,6 +2,29 @@
 
 Catatan perkembangan DB-Eye. Update file ini setiap ada perubahan besar agar konteks development tidak hilang.
 
+## 2026-07-21
+
+### Selesai
+
+- Refactor `src/app.rs` (2512 baris) menjadi `src/app/` module directory, tanpa perubahan behavior:
+  - `mod.rs`: `App`, `Screen`, `Focus`, event loop `run()`, dispatch top-level.
+  - `connect.rs`: `DbTypeChoice`, `ConnectForm`, `ServerConn`, `SavedConnection`, saved-connections persistence, connect/database/schema handlers.
+  - `tabs.rs`: `Tab`, table-list navigation, `load_table_data`.
+  - `data_panel.rs`: data-panel navigation dan inline cell edit.
+  - `crud.rs`: `CrudMode`, `CrudForm`, `CrudStatement`, `DeleteConfirm`, SQL/statement building + validation (plus tests).
+  - `crud_actions.rs`: insert/update/delete form handlers.
+  - `query.rs`: `QueryHistoryEntry`, custom SQL query dan search handlers.
+  - Test module dipecah agar tiap test tetap berada di file yang sama dengan kode yang diuji.
+
+### Catatan Teknis
+
+- Field `App`/`Tab`/dll tetap `pub` seperti semula; method lintas-submodule yang sebelumnya private diberi `pub(super)` seperlunya (bukan blanket `pub`).
+- `main.rs` dan `ui.rs` tidak perlu diubah — `mod app;` tetap resolve ke `src/app/mod.rs`, dan `pub use` re-export menjaga `app::{DbTypeChoice, ConnectForm, CrudMode, format_duration_ms, ...}` tetap accessible.
+
+### Validasi
+
+- `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (13 tests), dan `cargo build --release` semua sukses.
+
 ## 2026-06-02
 
 ### Selesai
