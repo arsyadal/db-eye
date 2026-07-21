@@ -48,6 +48,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengi
 - Views listed alongside tables in the Tables panel, labeled `(view)` (previously silently mixed in unlabeled for MySQL, silently excluded for SQLite/PostgreSQL).
 - Table stats popup (`s` in the data panel): index list and approximate on-disk size.
 - Manual reconnect action (`Ctrl+R`): re-establishes a dropped connection on the current tab using the original connection URL, then reloads schema/table list and the open table's data if one was loaded. Previously a dropped connection required closing the tab (`Ctrl+W`) and reconnecting from scratch.
+- Per-column sorting (`o` in the data panel): cycles asc → desc → off, implemented as a DB-side `ORDER BY` so it stays correct across pagination.
 
 ### Fixed
 
