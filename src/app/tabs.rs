@@ -16,6 +16,8 @@ pub struct Tab {
     pub row_offset: usize,
     pub col_offset: usize,
     pub selected_row: usize,
+    pub sort_column: Option<String>,
+    pub sort_desc: bool,
     pub total_rows: i64,
     pub search_query: String,
     pub server_info: Option<(ConnectForm, DbTypeChoice)>,
@@ -40,6 +42,8 @@ impl Tab {
             row_offset: 0,
             col_offset: 0,
             selected_row: 0,
+            sort_column: None,
+            sort_desc: false,
             total_rows: 0,
             search_query: String::new(),
             server_info: None,
@@ -114,9 +118,9 @@ impl Tab {
 impl App {
     fn data_help(&self) -> &'static str {
         if self.read_only {
-            "READ-ONLY  |  j/k:nav  v:export  s:stats  /:search  :::query  Ctrl+H:history  Esc:back"
+            "READ-ONLY  |  j/k:nav  o:sort  v:export  s:stats  /:search  :::query  Ctrl+H:history  Esc:back"
         } else {
-            "j/k:nav  i:insert  u:update  d:delete  e:edit  v:export  s:stats  /:search  :::query  Ctrl+H:history  Esc:back"
+            "j/k:nav  i:insert  u:update  d:delete  e:edit  o:sort  v:export  s:stats  /:search  :::query  Ctrl+H:history  Esc:back"
         }
     }
 
@@ -342,7 +346,7 @@ impl App {
     }
 
     pub(super) async fn load_table_data(&mut self) {
-        let (table, offset, page_size, schema) = {
+        let (table, offset, page_size, schema, sort_column, sort_desc) = {
             let tab = match self.current_tab() {
                 Some(t) => t,
                 None => return,
@@ -356,6 +360,8 @@ impl App {
                 tab.row_offset,
                 self.page_size,
                 tab.current_schema().map(|s| s.to_string()),
+                tab.sort_column.clone(),
+                tab.sort_desc,
             )
         };
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
@@ -363,9 +369,16 @@ impl App {
                 Ok(count) => tab.total_rows = count,
                 Err(_) => tab.total_rows = 0,
             }
+            let sort = sort_column.as_deref().map(|c| (c, sort_desc));
             match tab
                 .db
-                .query_table(schema.as_deref(), &table, page_size as u32, offset as u32)
+                .query_table(
+                    schema.as_deref(),
+                    &table,
+                    page_size as u32,
+                    offset as u32,
+                    sort,
+                )
                 .await
             {
                 Ok(result) => {
@@ -373,9 +386,9 @@ impl App {
                     tab.search_query.clear();
                     tab.update_filter();
                     let actions = if self.read_only {
-                        "READ-ONLY  /:search  v:csv  s:stats  ::sql  Ctrl+H:history  q:back"
+                        "READ-ONLY  /:search  o:sort  v:csv  s:stats  ::sql  Ctrl+H:history  q:back"
                     } else {
-                        "i:insert  u:update  d:delete  e:edit  /:search  v:csv  s:stats  ::sql  Ctrl+H:history  q:back"
+                        "i:insert  u:update  d:delete  e:edit  /:search  o:sort  v:csv  s:stats  ::sql  Ctrl+H:history  q:back"
                     };
                     self.status = format!(
                         "{}  |  {} rows  |  Tab:focus  j/k:scroll  h/l:cols  {}",
@@ -385,5 +398,39 @@ impl App {
                 Err(e) => self.status = format_db_error("Loading table data", &e),
             }
         }
+    }
+
+    pub(super) async fn toggle_sort_column(&mut self) {
+        let col_name = match self.current_tab() {
+            Some(tab) => tab
+                .result
+                .as_ref()
+                .and_then(|r| r.columns.get(tab.col_offset))
+                .cloned(),
+            None => return,
+        };
+        let col_name = match col_name {
+            Some(c) => c,
+            None => return,
+        };
+
+        if let Some(tab) = self.current_tab_mut() {
+            match &tab.sort_column {
+                Some(c) if *c == col_name && !tab.sort_desc => {
+                    tab.sort_desc = true;
+                }
+                Some(c) if *c == col_name && tab.sort_desc => {
+                    tab.sort_column = None;
+                    tab.sort_desc = false;
+                }
+                _ => {
+                    tab.sort_column = Some(col_name);
+                    tab.sort_desc = false;
+                }
+            }
+            tab.row_offset = 0;
+            tab.selected_row = 0;
+        }
+        self.load_table_data().await;
     }
 }

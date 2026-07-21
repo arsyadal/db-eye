@@ -108,6 +108,7 @@ Saved connections (`Ctrl+S`) persist to a local JSON file — passwords are neve
 | `d` | Delete selected row (requires PK + confirmation) |
 | `v` | Export visible data to CSV (mnemonic: view/export) |
 | `s` | Show table stats (indexes, approximate size) |
+| `o` | Sort by column under cursor (cycles asc → desc → off) |
 | `Tab` | Switch focus to tables panel |
 | `q` / `Esc` | Back to tables panel |
 

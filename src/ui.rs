@@ -517,7 +517,15 @@ fn draw_data_panel(f: &mut Frame, app: &App, area: Rect) {
             .iter()
             .skip(col_offset)
             .take(visible)
-            .map(|c| Cell::from(c.as_str()).style(Style::default().add_modifier(Modifier::BOLD)))
+            .map(|c| {
+                let label = if tab.sort_column.as_deref() == Some(c.as_str()) {
+                    let arrow = if tab.sort_desc { "▼" } else { "▲" };
+                    format!("{c} {arrow}")
+                } else {
+                    c.clone()
+                };
+                Cell::from(label).style(Style::default().add_modifier(Modifier::BOLD))
+            })
             .collect::<Vec<_>>(),
     )
     .bottom_margin(1);
@@ -1033,6 +1041,7 @@ fn draw_help_popup(f: &mut Frame) {
         Line::from(" i / u / d  Insert / Update / Delete row"),
         Line::from(" v          Export current view to CSV"),
         Line::from(" s          Show table stats (indexes, size)"),
+        Line::from(" o          Sort by column under cursor (asc/desc/off)"),
         Line::from(""),
         Line::from(Span::styled(
             " Form / Dialogs ",
