@@ -72,6 +72,7 @@ Saved connections (`Ctrl+S`) persist to a local JSON file — passwords are neve
 | `?` | Show / hide help popup |
 | `Ctrl+T` | New connection (Connect screen) |
 | `Ctrl+W` | Close current tab |
+| `Ctrl+R` | Reconnect current tab (recovers a dropped connection) |
 | `[` / `]` | Previous / Next tab |
 
 ### Connect Screen

@@ -5,6 +5,7 @@ use std::fs;
 
 pub struct Tab {
     pub path: String,
+    pub reconnect_url: String,
     pub db: DbClient,
     pub schemas: Vec<String>,
     pub schema_index: usize,
@@ -25,9 +26,10 @@ pub struct Tab {
 }
 
 impl Tab {
-    pub fn new(path: String, db: DbClient) -> Self {
+    pub fn new(path: String, reconnect_url: String, db: DbClient) -> Self {
         Self {
             path,
+            reconnect_url,
             db,
             schemas: vec![],
             schema_index: 0,
@@ -153,6 +155,10 @@ impl App {
                     self.status = "Query history — j/k:nav  Enter:edit  r:run  Esc:close".into();
                     return;
                 }
+                KeyCode::Char('r') => {
+                    self.reconnect_current_tab().await;
+                    return;
+                }
                 _ => {}
             }
         }
@@ -276,6 +282,62 @@ impl App {
         } else {
             self.screen = Screen::Connect;
             self.status = self.connect_help().into();
+        }
+    }
+
+    pub(super) async fn reconnect_current_tab(&mut self) {
+        let (url, had_table, prev_schema) = match self.current_tab() {
+            Some(t) => (
+                t.reconnect_url.clone(),
+                t.result.is_some(),
+                t.current_schema().map(|s| s.to_string()),
+            ),
+            None => return,
+        };
+        self.status = "Reconnecting...".into();
+        let client = match DbClient::connect(&url).await {
+            Ok(client) => client,
+            Err(e) => {
+                self.status = format_db_error("Reconnect", &e);
+                return;
+            }
+        };
+        let is_postgres = client.db_type == crate::db::DbType::Postgres;
+        if let Some(tab) = self.current_tab_mut() {
+            tab.db = client;
+        }
+
+        if is_postgres {
+            let schemas = match self.current_tab() {
+                Some(tab) => tab.db.list_schemas().await.unwrap_or_default(),
+                None => return,
+            };
+            if let Some(tab) = self.current_tab_mut() {
+                tab.schemas = schemas;
+                if let Some(s) = &prev_schema {
+                    tab.schema_index = tab.schemas.iter().position(|x| x == s).unwrap_or(0);
+                }
+            }
+        }
+
+        let schema = self
+            .current_tab()
+            .and_then(|t| t.current_schema().map(|s| s.to_string()));
+        let tables = match self.current_tab() {
+            Some(tab) => tab
+                .db
+                .list_tables(schema.as_deref())
+                .await
+                .unwrap_or_default(),
+            None => return,
+        };
+        if let Some(tab) = self.current_tab_mut() {
+            tab.tables = tables;
+        }
+
+        self.status = "Reconnected".into();
+        if had_table {
+            self.load_table_data().await;
         }
     }
 
