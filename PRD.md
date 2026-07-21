@@ -1,107 +1,107 @@
 # PRD — DB-Eye Production Roadmap
 
-## Status Saat Ini
+## Current Status
 
-DB-Eye sudah usable sebagai terminal UI database browser untuk SQLite, PostgreSQL, dan MySQL. Fitur dasar sudah tersedia: koneksi database, browse table, search, custom query, export CSV, multi-tab, dan CRUD row sederhana.
+DB-Eye is already usable as a terminal UI database browser for SQLite, PostgreSQL, and MySQL. Basic features are available: database connections, table browsing, search, custom queries, CSV export, multi-tab, and simple row CRUD.
 
-Target dokumen ini adalah daftar fitur yang perlu diimplementasikan atau bisa dikembangkan agar DB-Eye siap production-grade.
+The goal of this document is to list the features that still need to be implemented, or could be built out, for DB-Eye to be production-grade.
 
-## Tujuan Produk
+## Product Goals
 
-- Menjadi database browser TUI yang ringan, cepat, dan aman.
-- Mendukung workflow harian developer/DBA untuk inspeksi, query, dan edit data.
-- Aman digunakan pada database lokal maupun server development/staging/production.
-- Mudah di-install via `cargo install db-eye`.
+- Be a lightweight, fast, and safe TUI database browser.
+- Support the daily workflow of developers/DBAs for inspecting, querying, and editing data.
+- Be safe to use against local databases as well as development/staging/production servers.
+- Be easy to install via `cargo install db-eye`.
 
-## Prioritas P0 — Wajib untuk Production
+## Priority P0 — Required for Production
 
-### 1. Keamanan Query dan CRUD
+### 1. Query and CRUD Security
 
-- Gunakan parameterized query/bind values untuk insert, update, delete.
-- Hindari build SQL value manual untuk input user.
-- Validasi identifier table/column dengan metadata database.
-- Tambahkan mode read-only untuk koneksi production.
-- Tambahkan konfirmasi ekstra untuk operasi destructive:
+- Use parameterized queries/bind values for insert, update, delete.
+- Avoid manually building SQL values from user input.
+- Validate table/column identifiers against database metadata.
+- Add a read-only mode for production connections.
+- Add extra confirmation for destructive operations:
   - delete row
-  - update banyak row
-  - drop/truncate jika custom query menjalankan statement destructive
+  - update many rows
+  - drop/truncate if a custom query runs a destructive statement
 
-### 2. Testing Otomatis
+### 2. Automated Testing
 
-- Integration test SQLite untuk:
+- SQLite integration tests for:
   - connect
   - list table
   - query table
   - search/filter
   - insert/update/delete
   - export CSV
-- Test SQL quoting untuk nama table/column dengan spasi atau reserved keyword.
-- Test error handling untuk constraint violation.
+- Test SQL quoting for table/column names with spaces or reserved keywords.
+- Test error handling for constraint violations.
 - Test multi-tab state isolation.
-- Setup CI GitHub Actions:
+- Set up GitHub Actions CI:
   - `cargo fmt --check`
   - `cargo clippy -- -D warnings`
   - `cargo test`
   - build release
 
-### 3. Schema dan Primary Key Handling
+### 3. Schema and Primary Key Handling
 
-- PostgreSQL: support schema selain `public`.
-- MySQL: support database/table metadata lebih lengkap. ✅ initial implementation (nullable/default, type precision, views, index/size stats)
-- Support composite primary key untuk update/delete.
-- Jika table tidak punya primary key:
-  - tampilkan warning
-  - disable update/delete, atau
-  - gunakan safe row identity strategy bila memungkinkan
+- PostgreSQL: support schemas other than `public`.
+- MySQL: support richer database/table metadata. ✅ initial implementation (nullable/default, type precision, views, index/size stats)
+- Support composite primary keys for update/delete.
+- If a table has no primary key:
+  - show a warning
+  - disable update/delete, or
+  - use a safe row-identity strategy where possible
 
 ### 4. Data Type Handling
 
-- Deteksi tipe data column dari metadata. ✅ initial implementation
-- Input form harus handle:
+- Detect column data type from metadata. ✅ initial implementation
+- Input forms must handle:
   - string
   - integer ✅ initial validation
   - float/decimal ✅ initial validation
   - boolean ✅ initial validation
   - date/time/timestamp
   - NULL ✅ initial implementation
-  - blob/binary sebagai read-only/placeholder ✅ initial validation
-- Jangan treat semua input sebagai string.
-- Tampilkan nilai NULL beda dari string `"NULL"`. ✅ initial implementation
+  - blob/binary as read-only/placeholder ✅ initial validation
+- Don't treat all input as strings.
+- Display NULL values distinctly from the string `"NULL"`. ✅ initial implementation
 
-### 5. Error Handling dan Recovery ✅
+### 5. Error Handling and Recovery ✅
 
-- Pesan error user-friendly untuk:
+- User-friendly error messages for:
   - connection failed
   - permission denied
   - foreign key violation
   - unique constraint violation
   - invalid SQL
   - network timeout
-- Jangan crash saat query gagal atau koneksi putus. ✅ semua DB call sudah `Result`-based, tidak ada `.unwrap()` di jalur produksi
-- Tambahkan reconnect action. ✅ `Ctrl+R` — reconnect tab aktif pakai `reconnect_url` yang tersimpan, lalu reload schema/table list
+- Don't crash when a query fails or the connection drops. ✅ all DB calls are already `Result`-based, no `.unwrap()` on any production path
+- Add a reconnect action. ✅ `Ctrl+R` — reconnects the active tab using its stored `reconnect_url`, then reloads the schema/table list
 
-## Prioritas P1 — Sangat Direkomendasikan
+## Priority P1 — Strongly Recommended
 
-### 1. UX CRUD Lebih Baik
+### 1. Better CRUD UX
 
-- Inline cell edit dari data panel.
-- Form insert/update dengan:
+- Inline cell edit from the data panel.
+- Insert/update form with:
   - required/not-null indicator
   - default value indicator
-  - FK dropdown/select, bukan hanya hint
+  - FK dropdown/select, not just a hint
   - reset field
-  - clear to NULL shortcut
-- Support paste multi-character dengan benar.
-- Support horizontal scroll di form untuk text panjang.
-- Support multiline text editor popup.
+  - clear-to-NULL shortcut
+- Correctly support multi-character paste.
+- Support horizontal scroll in the form for long text.
+- Support a multiline text editor popup.
 
 ### 2. Query Experience
 
 - Query history per tab.
 - Save named queries.
-- Syntax highlighting SQL.
-- Run selected statement jika input berisi banyak statement.
-- Tampilkan rows affected untuk write query.
+- SQL syntax highlighting.
+- Run the selected statement if the input contains multiple statements.
+- Show rows affected for write queries.
 - Explain query plan:
   - SQLite `EXPLAIN QUERY PLAN`
   - PostgreSQL `EXPLAIN`
@@ -111,43 +111,43 @@ Target dokumen ini adalah daftar fitur yang perlu diimplementasikan atau bisa di
 
 - Sorting per column.
 - Filter per column.
-- Pagination yang lebih eksplisit:
+- More explicit pagination:
   - next page
   - previous page
-  - jump offset/page
-- Show total filtered rows jika memungkinkan.
+  - jump to offset/page
+- Show total filtered rows where possible.
 - Column hide/show.
-- Copy cell/row/column value ke clipboard.
+- Copy cell/row/column value to clipboard.
 
 ### 4. Connection Management
 
 - Saved connections/config file.
-- Password via environment variable atau prompt secure.
-- Connection string input manual. ✅ initial implementation
+- Password via environment variable or secure prompt.
+- Manual connection string input. ✅ initial implementation
 - SSH tunnel support.
-- TLS options untuk PostgreSQL/MySQL.
+- TLS options for PostgreSQL/MySQL.
 - Recent connections list.
 
 ### 5. Export/Import
 
-- Export CSV dengan opsi delimiter/header.
+- Export CSV with delimiter/header options.
 - Export JSON.
 - Export SQL insert statements.
-- Import CSV ke table existing.
-- Preview sebelum import.
+- Import CSV into an existing table.
+- Preview before import.
 
-## Prioritas P2 — Nice to Have
+## Priority P2 — Nice to Have
 
-### 1. Visual dan Navigasi
+### 1. Visual and Navigation
 
 - Theme support.
-- Help screen `?` berisi semua keybindings.
+- Help screen `?` covering all keybindings.
 - Command palette.
-- Mouse support opsional.
-- Status bar lebih informatif:
+- Optional mouse support.
+- More informative status bar:
   - active database
   - active schema
-  - mode read/write
+  - read/write mode
   - query duration
 
 ### 2. Observability
@@ -164,50 +164,50 @@ Target dokumen ini adalah daftar fitur yang perlu diimplementasikan atau bisa di
 - Foreign key relation viewer.
 - Table create SQL/DDL viewer.
 - Database size/table size info.
-- Migration diff ringan antar schema.
+- Lightweight schema diff between databases.
 
-### 4. Packaging dan Distribution
+### 4. Packaging and Distribution
 
-- Release binary untuk macOS/Linux/Windows.
+- Release binaries for macOS/Linux/Windows.
 - Homebrew formula.
 - AUR package.
-- Docker image optional.
-- Demo GIF dan screenshots di README.
+- Optional Docker image.
+- Demo GIF and screenshots in README.
 
-## Non-Goals Saat Ini
+## Current Non-Goals
 
-- Menjadi full database administration suite seperti DataGrip/DBeaver.
-- Visual query builder kompleks.
-- ORM/migration framework.
-- Production write operations tanpa guard/read-only mode.
+- Becoming a full database administration suite like DataGrip/DBeaver.
+- A complex visual query builder.
+- An ORM/migration framework.
+- Production write operations without a guard/read-only mode.
 
 ## Development Documentation Standard
 
-Setiap development wajib terdokumentasi agar arah produk tetap jelas:
+Every piece of development must be documented so the product direction stays clear:
 
-- Fitur baru dimulai dari feature spec menggunakan `docs/templates/FEATURE_SPEC.md`.
-- Perubahan user-facing wajib memperbarui `README.md`.
-- Perubahan roadmap/prioritas wajib memperbarui `PRD.md`.
-- Perubahan yang akan masuk rilis wajib dicatat di `CHANGELOG.md`.
-- Perubahan besar/technical debt wajib dicatat di `docs/DEVLOG.md`.
-- Keputusan arsitektur signifikan wajib dibuat sebagai ADR di `docs/adr/`.
-- Release wajib mengikuti `docs/templates/RELEASE_CHECKLIST.md`.
+- New features start from a feature spec using `docs/templates/FEATURE_SPEC.md`.
+- User-facing changes must update `README.md`.
+- Roadmap/priority changes must update `PRD.md`.
+- Changes going into a release must be noted in `CHANGELOG.md`.
+- Large changes/technical debt must be noted in `docs/DEVLOG.md`.
+- Significant architecture decisions must be written as an ADR in `docs/adr/`.
+- Releases must follow `docs/templates/RELEASE_CHECKLIST.md`.
 
-## Acceptance Criteria Production v1.0
+## Production v1.0 Acceptance Criteria
 
-DB-Eye bisa dianggap production-ready jika:
+DB-Eye can be considered production-ready when:
 
-- Semua P0 selesai.
-- CI hijau untuk fmt, clippy, test, dan release build. ✅ initial implementation
-- CRUD menggunakan parameterized query.
-- Update/delete aman untuk primary key tunggal dan composite key. ✅ initial implementation
-- PostgreSQL schema non-public didukung.
-- Ada read-only mode.
-- Error handling tidak menyebabkan crash pada skenario umum.
-- README lengkap dengan install, usage, keybindings, safety notes, dan screenshots/demo.
-- Release tag dan changelog tersedia.
+- All P0 items are done.
+- CI is green for fmt, clippy, test, and release build. ✅ initial implementation
+- CRUD uses parameterized queries.
+- Update/delete are safe for both single-column and composite primary keys. ✅ initial implementation
+- Non-public PostgreSQL schemas are supported.
+- A read-only mode exists.
+- Error handling doesn't cause crashes in common scenarios.
+- README is complete with install, usage, keybindings, safety notes, and screenshots/demo.
+- A release tag and changelog are available.
 
-## Roadmap Rilis
+## Release Roadmap
 
 ### v0.3
 
@@ -222,7 +222,7 @@ DB-Eye bisa dianggap production-ready jika:
 - PostgreSQL schema support.
 - Composite primary key support. ✅ initial implementation
 - Query history.
-- Rows affected untuk write query.
+- Rows affected for write queries.
 
 ### v0.5
 
@@ -236,4 +236,4 @@ DB-Eye bisa dianggap production-ready jika:
 - Full P0 complete.
 - CI/release pipeline. ✅ CI initial implementation
 - Production safety polish.
-- Documentation lengkap.
+- Complete documentation.
