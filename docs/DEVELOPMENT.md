@@ -1,43 +1,43 @@
 # Development Guide
 
-Dokumen ini menjadi aturan kerja supaya setiap pengembangan DB-Eye lebih terarah, bisa dilacak, dan mudah direview.
+This document sets the working rules so DB-Eye development stays focused, traceable, and easy to review.
 
-## Prinsip
+## Principles
 
-- Setiap fitur harus punya tujuan jelas sebelum coding.
-- Setiap perubahan penting harus tercatat.
-- Setiap rilis harus punya changelog.
-- Setiap keputusan teknis besar harus punya alasan.
-- Production safety lebih penting daripada cepat menambah fitur.
+- Every feature needs a clear purpose before coding starts.
+- Every significant change must be recorded.
+- Every release must have a changelog.
+- Every major technical decision must have a stated reason.
+- Production safety matters more than shipping features fast.
 
-## Alur Development
+## Development Flow
 
 ### 1. Plan
 
-Sebelum implementasi, tulis ringkas:
+Before implementing, write a short summary of:
 
-- Masalah yang diselesaikan.
-- Scope fitur.
+- The problem being solved.
+- Feature scope.
 - Non-scope.
-- Risiko.
+- Risks.
 - Acceptance criteria.
 
-Gunakan template:
+Use the template:
 
 - `docs/templates/FEATURE_SPEC.md`
 
 ### 2. Implement
 
-Saat coding:
+While coding:
 
-- Jaga perubahan tetap kecil dan fokus.
-- Pisahkan fitur, refactor, dan docs jika memungkinkan.
-- Hindari SQL manual untuk input user baru; prioritaskan parameterized query.
-- Update dokumentasi bersamaan dengan perubahan fitur.
+- Keep changes small and focused.
+- Separate feature work, refactors, and docs where possible.
+- Avoid manual SQL for new user input; prioritize parameterized queries.
+- Update documentation alongside the feature change.
 
 ### 3. Validate
 
-Minimal sebelum commit:
+Minimum before committing:
 
 ```bash
 cargo fmt
@@ -45,36 +45,36 @@ cargo check
 cargo clippy
 ```
 
-Jika sudah ada test terkait:
+If related tests already exist:
 
 ```bash
 cargo test
 ```
 
-Untuk fitur database, validasi minimal di SQLite dulu, lalu PostgreSQL/MySQL jika fitur cross-database.
+For database features, validate against SQLite first, then PostgreSQL/MySQL if the feature is cross-database.
 
 ### 4. Document
 
-Setiap perubahan wajib mengecek dokumen berikut:
+Every change must check the following docs:
 
-- `README.md` — jika user-facing behavior berubah.
-- `PRD.md` — jika roadmap/prioritas berubah.
-- `CHANGELOG.md` — jika fitur/fix/perubahan layak masuk rilis.
-- `docs/DEVLOG.md` — catatan development harian/perubahan besar.
-- ADR baru — jika ada keputusan arsitektur signifikan.
+- `README.md` — if user-facing behavior changed.
+- `PRD.md` — if the roadmap/priorities changed.
+- `CHANGELOG.md` — if the feature/fix/change is release-worthy.
+- `docs/DEVLOG.md` — daily development notes/large changes.
+- A new ADR — if there's a significant architecture decision.
 
 ### 5. Commit
 
-Gunakan Conventional Commits:
+Use Conventional Commits:
 
-- `feat:` fitur baru
+- `feat:` new feature
 - `fix:` bug fix
-- `docs:` dokumentasi
-- `refactor:` perubahan struktur tanpa behavior baru
-- `test:` tambah/ubah test
+- `docs:` documentation
+- `refactor:` structural change with no new behavior
+- `test:` add/change tests
 - `chore:` maintenance
 
-Contoh:
+Example:
 
 ```text
 feat: add parameterized row updates
@@ -84,62 +84,62 @@ docs: update production roadmap
 
 ### 6. Release
 
-Sebelum release:
+Before releasing:
 
-- Jalankan checklist di `docs/templates/RELEASE_CHECKLIST.md`.
-- Pastikan `CHANGELOG.md` diperbarui.
-- Pastikan version `Cargo.toml` sesuai.
-- Buat git tag.
+- Run the checklist in `docs/templates/RELEASE_CHECKLIST.md`.
+- Make sure `CHANGELOG.md` is updated.
+- Make sure the `Cargo.toml` version is correct.
+- Create a git tag.
 
 ## Definition of Done
 
-Sebuah task dianggap selesai jika:
+A task is considered done when:
 
-- Acceptance criteria terpenuhi.
-- `cargo fmt` sukses.
-- `cargo check` sukses.
-- `cargo clippy` tidak punya error baru.
-- Test terkait ditambah/diperbarui jika memungkinkan.
-- README/PRD/CHANGELOG/DEVLOG diperbarui jika relevan.
-- Perubahan sudah dicommit dengan pesan jelas.
+- Acceptance criteria are met.
+- `cargo fmt` succeeds.
+- `cargo check` succeeds.
+- `cargo clippy` has no new errors.
+- Related tests are added/updated where possible.
+- README/PRD/CHANGELOG/DEVLOG are updated where relevant.
+- Changes are committed with a clear message.
 
-## Dokumentasi Keputusan Teknis
+## Technical Decision Documentation
 
-Untuk keputusan besar, buat ADR di:
+For major decisions, create an ADR at:
 
 ```text
 docs/adr/YYYY-MM-DD-short-title.md
 ```
 
-Contoh keputusan yang perlu ADR:
+Examples of decisions that need an ADR:
 
-- Strategi parameterized query lintas SQLite/PostgreSQL/MySQL.
-- Cara mendukung composite primary key.
-- Format config saved connections.
-- Read-only mode dan safety guard.
+- Parameterized query strategy across SQLite/PostgreSQL/MySQL.
+- How composite primary keys are supported.
+- Saved connections config format.
+- Read-only mode and safety guards.
 
-Format ADR:
+ADR format:
 
 ```md
-# ADR: Judul
+# ADR: Title
 
 ## Status
 Accepted / Proposed / Superseded
 
 ## Context
-Masalah dan constraint.
+The problem and constraints.
 
 ## Decision
-Keputusan yang diambil.
+The decision that was made.
 
 ## Consequences
-Dampak positif/negatif.
+Positive/negative impact.
 ```
 
-## Prioritas Development Saat Ini
+## Current Development Priorities
 
-Ikuti `PRD.md`:
+Follow `PRD.md`:
 
-1. P0 dulu untuk production readiness.
-2. P1 setelah safety dan test kuat.
-3. P2 setelah core stabil.
+1. P0 first, for production readiness.
+2. P1 once safety and tests are solid.
+3. P2 once the core is stable.
