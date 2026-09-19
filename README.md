@@ -107,7 +107,7 @@ Saved connections (`Ctrl+S`) persist to a local JSON file — passwords are neve
 | `h` / `l` | Scroll columns left / right |
 | `Enter` / `e` | **Inline Cell Edit** (starts editing selected cell) |
 | `/` | Search / filter rows (real-time) |
-| `:` | Enter SQL query (supports history with `↑`/`↓`) |
+| `:` | Open SQL query editor (works from the tables or data panel; supports history with `↑`/`↓`) |
 | `Ctrl+H` / `H` | Open query history |
 | `i` | Insert row (disabled in read-only mode) |
 | `u` | Update selected row (full form) |
