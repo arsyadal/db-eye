@@ -64,7 +64,9 @@ impl App {
             }
             KeyCode::Char('e') if modifiers.contains(KeyModifiers::CONTROL) => {
                 let sql = self.query_input.trim().to_string();
-                if !sql.is_empty() && let Some(tab) = self.current_tab() {
+                if !sql.is_empty()
+                    && let Some(tab) = self.current_tab()
+                {
                     let prefix = match tab.db.db_type {
                         DbType::Sqlite => "EXPLAIN QUERY PLAN ",
                         DbType::Postgres | DbType::Mysql => "EXPLAIN ",
@@ -296,7 +298,10 @@ impl App {
                     if let Some(pos) = self.named_queries.iter().position(|q| q.name == name) {
                         self.named_queries[pos].sql = sql;
                     } else {
-                        self.named_queries.push(NamedQuery { name: name.clone(), sql });
+                        self.named_queries.push(NamedQuery {
+                            name: name.clone(),
+                            sql,
+                        });
                     }
                     self.save_named_queries();
                     self.status = format!("Query saved as '{}'", name);
@@ -343,7 +348,9 @@ impl App {
                     self.status = format!("Loaded named query '{}'", q.name);
                 }
             }
-            KeyCode::Delete | KeyCode::Backspace if self.named_query_index < self.named_queries.len() => {
+            KeyCode::Delete | KeyCode::Backspace
+                if self.named_query_index < self.named_queries.len() =>
+            {
                 let removed = self.named_queries.remove(self.named_query_index);
                 self.save_named_queries();
                 self.status = format!("Deleted named query '{}'", removed.name);
@@ -395,17 +402,26 @@ mod tests {
         let mut app = App::new(false);
         app.screen = Screen::Query;
         app.query_input = "SELECT * FROM users".to_string();
-        
+
         let db = DbClient::connect("sqlite::memory:").await.unwrap();
-        app.tabs.push(Tab::new("sqlite::memory:".to_string(), "sqlite::memory:".to_string(), db));
+        app.tabs.push(Tab::new(
+            "sqlite::memory:".to_string(),
+            "sqlite::memory:".to_string(),
+            db,
+        ));
         app.active_tab = 0;
-        
+
         // Execute Ctrl+E
-        app.handle_query(KeyCode::Char('e'), KeyModifiers::CONTROL).await;
-        
+        app.handle_query(KeyCode::Char('e'), KeyModifiers::CONTROL)
+            .await;
+
         // It should try to execute "EXPLAIN QUERY PLAN SELECT * FROM users"
         // and fail with "no such table: users" or similar, proving it prepended the explain prefix
-        assert!(app.query_history.iter().any(|h| h.sql.starts_with("EXPLAIN QUERY PLAN")));
+        assert!(
+            app.query_history
+                .iter()
+                .any(|h| h.sql.starts_with("EXPLAIN QUERY PLAN"))
+        );
     }
 
     #[test]

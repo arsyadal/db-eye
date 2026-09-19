@@ -52,17 +52,17 @@ impl ImportForm {
     pub fn parse_csv(&mut self) -> Result<(), String> {
         let content = fs::read_to_string(&self.filepath)
             .map_err(|e| format!("Failed to read file: {}", e))?;
-        
+
         let delimiter_char = self.delimiter.as_char();
         let mut lines = content.lines();
-        
+
         let first_line = match lines.next() {
             Some(l) => l,
             None => return Err("CSV file is empty".to_string()),
         };
-        
+
         let raw_headers = parse_csv_line(first_line, delimiter_char);
-        
+
         let mut parsed_rows = Vec::new();
         for line in lines {
             if line.trim().is_empty() {
@@ -82,16 +82,20 @@ impl ImportForm {
         }
 
         self.parsed_rows = parsed_rows;
-        
+
         // Auto-match columns
-        self.mapped_columns = self.csv_columns.iter().map(|csv_col| {
-            let normalized_csv = csv_col.to_lowercase().replace(' ', "_");
-            let matched = self.db_columns.iter().find(|db_col| {
-                let normalized_db = db_col.to_lowercase();
-                normalized_db == normalized_csv
-            });
-            (csv_col.clone(), matched.cloned())
-        }).collect();
+        self.mapped_columns = self
+            .csv_columns
+            .iter()
+            .map(|csv_col| {
+                let normalized_csv = csv_col.to_lowercase().replace(' ', "_");
+                let matched = self.db_columns.iter().find(|db_col| {
+                    let normalized_db = db_col.to_lowercase();
+                    normalized_db == normalized_csv
+                });
+                (csv_col.clone(), matched.cloned())
+            })
+            .collect();
 
         Ok(())
     }
@@ -102,7 +106,7 @@ fn parse_csv_line(line: &str, delimiter: char) -> Vec<String> {
     let mut current = String::new();
     let mut in_quotes = false;
     let mut chars = line.chars().peekable();
-    
+
     while let Some(c) = chars.next() {
         if c == '"' {
             if in_quotes && chars.peek() == Some(&'"') {
@@ -152,14 +156,34 @@ impl App {
                 }
                 KeyCode::Left | KeyCode::Right => {
                     match form.active_field {
-                        1 => { // Delimiter
+                        1 => {
+                            // Delimiter
                             form.delimiter = match form.delimiter {
-                                ImportDelimiter::Comma => if key == KeyCode::Left { ImportDelimiter::Tab } else { ImportDelimiter::Semicolon },
-                                ImportDelimiter::Semicolon => if key == KeyCode::Left { ImportDelimiter::Comma } else { ImportDelimiter::Tab },
-                                ImportDelimiter::Tab => if key == KeyCode::Left { ImportDelimiter::Semicolon } else { ImportDelimiter::Comma },
+                                ImportDelimiter::Comma => {
+                                    if key == KeyCode::Left {
+                                        ImportDelimiter::Tab
+                                    } else {
+                                        ImportDelimiter::Semicolon
+                                    }
+                                }
+                                ImportDelimiter::Semicolon => {
+                                    if key == KeyCode::Left {
+                                        ImportDelimiter::Comma
+                                    } else {
+                                        ImportDelimiter::Tab
+                                    }
+                                }
+                                ImportDelimiter::Tab => {
+                                    if key == KeyCode::Left {
+                                        ImportDelimiter::Semicolon
+                                    } else {
+                                        ImportDelimiter::Comma
+                                    }
+                                }
                             };
                         }
-                        2 => { // Headers
+                        2 => {
+                            // Headers
                             form.has_headers = !form.has_headers;
                         }
                         _ => {}
@@ -175,7 +199,8 @@ impl App {
                 }
                 KeyCode::Enter => {
                     match form.active_field {
-                        0 | 3 => { // Preview / Continue
+                        0 | 3 => {
+                            // Preview / Continue
                             match form.parse_csv() {
                                 Ok(()) => {
                                     form.preview_mode = true;
@@ -186,7 +211,8 @@ impl App {
                                 }
                             }
                         }
-                        4 => { // Cancel
+                        4 => {
+                            // Cancel
                             self.screen = Screen::Main;
                             self.status = "Import cancelled".to_string();
                             return;
@@ -256,14 +282,17 @@ impl App {
     }
 }
 
-async fn execute_import(tab: &mut Tab, form: &ImportForm) -> Result<usize, Box<dyn std::error::Error>> {
+async fn execute_import(
+    tab: &mut Tab,
+    form: &ImportForm,
+) -> Result<usize, Box<dyn std::error::Error>> {
     let table_name = tab.path.split('/').next_back().unwrap_or("table");
     let quoted_table = if tab.db.uses_numbered_placeholders() {
         format!("\"{}\"", table_name.replace('"', "\"\""))
     } else {
         format!("`{}`", table_name.replace('`', "``"))
     };
-    
+
     let mut target_db_cols = Vec::new();
     let mut csv_indices = Vec::new();
     for (i, (_csv, db_opt)) in form.mapped_columns.iter().enumerate() {
@@ -272,16 +301,23 @@ async fn execute_import(tab: &mut Tab, form: &ImportForm) -> Result<usize, Box<d
             csv_indices.push(i);
         }
     }
-    
+
     if target_db_cols.is_empty() {
         return Err("No columns mapped to database table".into());
     }
 
-    let columns_part = target_db_cols.iter()
-        .map(|c| if tab.db.uses_numbered_placeholders() { format!("\"{}\"", c.replace('"', "\"\"")) } else { format!("`{}`", c.replace('`', "``")) })
+    let columns_part = target_db_cols
+        .iter()
+        .map(|c| {
+            if tab.db.uses_numbered_placeholders() {
+                format!("\"{}\"", c.replace('"', "\"\""))
+            } else {
+                format!("`{}`", c.replace('`', "``"))
+            }
+        })
         .collect::<Vec<_>>()
         .join(", ");
-        
+
     let placeholders_part = (0..target_db_cols.len())
         .map(|i| {
             if tab.db.uses_numbered_placeholders() {
@@ -292,9 +328,12 @@ async fn execute_import(tab: &mut Tab, form: &ImportForm) -> Result<usize, Box<d
         })
         .collect::<Vec<_>>()
         .join(", ");
-        
-    let sql = format!("INSERT INTO {} ({}) VALUES ({})", quoted_table, columns_part, placeholders_part);
-    
+
+    let sql = format!(
+        "INSERT INTO {} ({}) VALUES ({})",
+        quoted_table, columns_part, placeholders_part
+    );
+
     let mut count = 0;
     for row in &form.parsed_rows {
         let mut vals = Vec::new();
@@ -310,7 +349,7 @@ async fn execute_import(tab: &mut Tab, form: &ImportForm) -> Result<usize, Box<d
         tab.db.execute_write_with_values(&sql, &vals).await?;
         count += 1;
     }
-    
+
     Ok(count)
 }
 
@@ -330,28 +369,50 @@ mod tests {
         );
         assert_eq!(
             parse_csv_line("1,\"hello \"\"world\"\"\",3", ','),
-            vec!["1".to_string(), "hello \"world\"".to_string(), "3".to_string()]
+            vec![
+                "1".to_string(),
+                "hello \"world\"".to_string(),
+                "3".to_string()
+            ]
         );
     }
 
     #[test]
     fn test_column_matching() {
-        let db_cols = vec!["id".to_string(), "first_name".to_string(), "last_name".to_string()];
+        let db_cols = vec![
+            "id".to_string(),
+            "first_name".to_string(),
+            "last_name".to_string(),
+        ];
         let mut form = ImportForm::new(db_cols);
-        form.csv_columns = vec!["ID".to_string(), "First Name".to_string(), "Unused".to_string()];
-        
-        // Auto-match columns
-        form.mapped_columns = form.csv_columns.iter().map(|csv_col| {
-            let normalized_csv = csv_col.to_lowercase().replace(' ', "_");
-            let matched = form.db_columns.iter().find(|db_col| {
-                let normalized_db = db_col.to_lowercase();
-                normalized_db == normalized_csv
-            });
-            (csv_col.clone(), matched.cloned())
-        }).collect();
+        form.csv_columns = vec![
+            "ID".to_string(),
+            "First Name".to_string(),
+            "Unused".to_string(),
+        ];
 
-        assert_eq!(form.mapped_columns[0], ("ID".to_string(), Some("id".to_string())));
-        assert_eq!(form.mapped_columns[1], ("First Name".to_string(), Some("first_name".to_string())));
+        // Auto-match columns
+        form.mapped_columns = form
+            .csv_columns
+            .iter()
+            .map(|csv_col| {
+                let normalized_csv = csv_col.to_lowercase().replace(' ', "_");
+                let matched = form.db_columns.iter().find(|db_col| {
+                    let normalized_db = db_col.to_lowercase();
+                    normalized_db == normalized_csv
+                });
+                (csv_col.clone(), matched.cloned())
+            })
+            .collect();
+
+        assert_eq!(
+            form.mapped_columns[0],
+            ("ID".to_string(), Some("id".to_string()))
+        );
+        assert_eq!(
+            form.mapped_columns[1],
+            ("First Name".to_string(), Some("first_name".to_string()))
+        );
         assert_eq!(form.mapped_columns[2], ("Unused".to_string(), None));
     }
 }

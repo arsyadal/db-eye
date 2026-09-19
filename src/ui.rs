@@ -886,30 +886,51 @@ fn draw_export_popup(f: &mut Frame, app: &App) {
         .split(inner_area);
 
     // Format Selection (row 0)
-    let format_label = Span::styled("Format:        ", Style::default().add_modifier(Modifier::BOLD));
+    let format_label = Span::styled(
+        "Format:        ",
+        Style::default().add_modifier(Modifier::BOLD),
+    );
     let format_csv = Span::styled(
         " CSV ",
         if form.format == crate::app::ExportFormat::Csv {
-            Style::default().fg(Color::Black).bg(if form.active_field == 0 { Color::Yellow } else { Color::Green })
+            Style::default()
+                .fg(Color::Black)
+                .bg(if form.active_field == 0 {
+                    Color::Yellow
+                } else {
+                    Color::Green
+                })
         } else {
             Style::default().fg(Color::DarkGray)
-        }
+        },
     );
     let format_json = Span::styled(
         " JSON ",
         if form.format == crate::app::ExportFormat::Json {
-            Style::default().fg(Color::Black).bg(if form.active_field == 0 { Color::Yellow } else { Color::Green })
+            Style::default()
+                .fg(Color::Black)
+                .bg(if form.active_field == 0 {
+                    Color::Yellow
+                } else {
+                    Color::Green
+                })
         } else {
             Style::default().fg(Color::DarkGray)
-        }
+        },
     );
     let format_sql = Span::styled(
         " SQL ",
         if form.format == crate::app::ExportFormat::Sql {
-            Style::default().fg(Color::Black).bg(if form.active_field == 0 { Color::Yellow } else { Color::Green })
+            Style::default()
+                .fg(Color::Black)
+                .bg(if form.active_field == 0 {
+                    Color::Yellow
+                } else {
+                    Color::Green
+                })
         } else {
             Style::default().fg(Color::DarkGray)
-        }
+        },
     );
     let format_line = Line::from(vec![
         format_label,
@@ -924,30 +945,51 @@ fn draw_export_popup(f: &mut Frame, app: &App) {
 
     if form.format == crate::app::ExportFormat::Csv {
         // Delimiter Selection (row 1)
-        let delim_label = Span::styled("CSV Delimiter: ", Style::default().add_modifier(Modifier::BOLD));
+        let delim_label = Span::styled(
+            "CSV Delimiter: ",
+            Style::default().add_modifier(Modifier::BOLD),
+        );
         let delim_comma = Span::styled(
             " Comma (,) ",
             if form.csv_delimiter == crate::app::CsvDelimiter::Comma {
-                Style::default().fg(Color::Black).bg(if form.active_field == 1 { Color::Yellow } else { Color::Green })
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(if form.active_field == 1 {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    })
             } else {
                 Style::default().fg(Color::DarkGray)
-            }
+            },
         );
         let delim_semi = Span::styled(
             " Semicolon (;) ",
             if form.csv_delimiter == crate::app::CsvDelimiter::Semicolon {
-                Style::default().fg(Color::Black).bg(if form.active_field == 1 { Color::Yellow } else { Color::Green })
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(if form.active_field == 1 {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    })
             } else {
                 Style::default().fg(Color::DarkGray)
-            }
+            },
         );
         let delim_tab = Span::styled(
             " Tab (\\t) ",
             if form.csv_delimiter == crate::app::CsvDelimiter::Tab {
-                Style::default().fg(Color::Black).bg(if form.active_field == 1 { Color::Yellow } else { Color::Green })
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(if form.active_field == 1 {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    })
             } else {
                 Style::default().fg(Color::DarkGray)
-            }
+            },
         );
         let delim_line = Line::from(vec![
             delim_label,
@@ -961,22 +1003,37 @@ fn draw_export_popup(f: &mut Frame, app: &App) {
         f.render_widget(Paragraph::new(delim_line), chunks[1]);
 
         // Headers (row 2)
-        let headers_label = Span::styled("CSV Headers:   ", Style::default().add_modifier(Modifier::BOLD));
+        let headers_label = Span::styled(
+            "CSV Headers:   ",
+            Style::default().add_modifier(Modifier::BOLD),
+        );
         let headers_yes = Span::styled(
             " Yes ",
             if form.csv_headers {
-                Style::default().fg(Color::Black).bg(if form.active_field == 2 { Color::Yellow } else { Color::Green })
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(if form.active_field == 2 {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    })
             } else {
                 Style::default().fg(Color::DarkGray)
-            }
+            },
         );
         let headers_no = Span::styled(
             " No ",
             if !form.csv_headers {
-                Style::default().fg(Color::Black).bg(if form.active_field == 2 { Color::Yellow } else { Color::Green })
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(if form.active_field == 2 {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    })
             } else {
                 Style::default().fg(Color::DarkGray)
-            }
+            },
         );
         let headers_line = Line::from(vec![
             headers_label,
@@ -989,7 +1046,10 @@ fn draw_export_popup(f: &mut Frame, app: &App) {
     }
 
     // Filename input (row 3)
-    let filename_label = Span::styled("File Name:     ", Style::default().add_modifier(Modifier::BOLD));
+    let filename_label = Span::styled(
+        "File Name:     ",
+        Style::default().add_modifier(Modifier::BOLD),
+    );
     let filename_style = if form.active_field == 3 {
         Style::default().fg(Color::Yellow)
     } else {
@@ -998,7 +1058,11 @@ fn draw_export_popup(f: &mut Frame, app: &App) {
     let filename_line = Line::from(vec![
         filename_label,
         Span::styled(&form.filename, filename_style),
-        if form.active_field == 3 { Span::styled("_", Style::default().fg(Color::Yellow)) } else { Span::raw("") }
+        if form.active_field == 3 {
+            Span::styled("_", Style::default().fg(Color::Yellow))
+        } else {
+            Span::raw("")
+        },
     ]);
     f.render_widget(Paragraph::new(filename_line), chunks[3]);
 
@@ -1020,14 +1084,20 @@ fn draw_export_popup(f: &mut Frame, app: &App) {
     } else {
         Style::default().fg(Color::Green)
     };
-    f.render_widget(Paragraph::new(" [ Export ] ").style(export_btn_style), btn_layout[1]);
+    f.render_widget(
+        Paragraph::new(" [ Export ] ").style(export_btn_style),
+        btn_layout[1],
+    );
 
     let cancel_btn_style = if form.active_field == 5 {
         Style::default().fg(Color::Black).bg(Color::Yellow)
     } else {
         Style::default().fg(Color::Red)
     };
-    f.render_widget(Paragraph::new(" [ Cancel ] ").style(cancel_btn_style), btn_layout[3]);
+    f.render_widget(
+        Paragraph::new(" [ Cancel ] ").style(cancel_btn_style),
+        btn_layout[3],
+    );
 }
 
 fn draw_import_popup(f: &mut Frame, app: &App) {
@@ -1058,7 +1128,10 @@ fn draw_import_popup(f: &mut Frame, app: &App) {
             .split(inner_area);
 
         // File Path (row 0)
-        let path_label = Span::styled("File Path:     ", Style::default().add_modifier(Modifier::BOLD));
+        let path_label = Span::styled(
+            "File Path:     ",
+            Style::default().add_modifier(Modifier::BOLD),
+        );
         let path_style = if form.active_field == 0 {
             Style::default().fg(Color::Yellow)
         } else {
@@ -1067,35 +1140,60 @@ fn draw_import_popup(f: &mut Frame, app: &App) {
         let path_line = Line::from(vec![
             path_label,
             Span::styled(&form.filepath, path_style),
-            if form.active_field == 0 { Span::styled("_", Style::default().fg(Color::Yellow)) } else { Span::raw("") }
+            if form.active_field == 0 {
+                Span::styled("_", Style::default().fg(Color::Yellow))
+            } else {
+                Span::raw("")
+            },
         ]);
         f.render_widget(Paragraph::new(path_line), chunks[0]);
 
         // Delimiter (row 1)
-        let delim_label = Span::styled("CSV Delimiter: ", Style::default().add_modifier(Modifier::BOLD));
+        let delim_label = Span::styled(
+            "CSV Delimiter: ",
+            Style::default().add_modifier(Modifier::BOLD),
+        );
         let delim_comma = Span::styled(
             " Comma (,) ",
             if form.delimiter == crate::app::ImportDelimiter::Comma {
-                Style::default().fg(Color::Black).bg(if form.active_field == 1 { Color::Yellow } else { Color::Green })
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(if form.active_field == 1 {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    })
             } else {
                 Style::default().fg(Color::DarkGray)
-            }
+            },
         );
         let delim_semi = Span::styled(
             " Semicolon (;) ",
             if form.delimiter == crate::app::ImportDelimiter::Semicolon {
-                Style::default().fg(Color::Black).bg(if form.active_field == 1 { Color::Yellow } else { Color::Green })
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(if form.active_field == 1 {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    })
             } else {
                 Style::default().fg(Color::DarkGray)
-            }
+            },
         );
         let delim_tab = Span::styled(
             " Tab (\\t) ",
             if form.delimiter == crate::app::ImportDelimiter::Tab {
-                Style::default().fg(Color::Black).bg(if form.active_field == 1 { Color::Yellow } else { Color::Green })
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(if form.active_field == 1 {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    })
             } else {
                 Style::default().fg(Color::DarkGray)
-            }
+            },
         );
         let delim_line = Line::from(vec![
             delim_label,
@@ -1109,22 +1207,37 @@ fn draw_import_popup(f: &mut Frame, app: &App) {
         f.render_widget(Paragraph::new(delim_line), chunks[1]);
 
         // Headers (row 2)
-        let headers_label = Span::styled("CSV Headers:   ", Style::default().add_modifier(Modifier::BOLD));
+        let headers_label = Span::styled(
+            "CSV Headers:   ",
+            Style::default().add_modifier(Modifier::BOLD),
+        );
         let headers_yes = Span::styled(
             " Yes ",
             if form.has_headers {
-                Style::default().fg(Color::Black).bg(if form.active_field == 2 { Color::Yellow } else { Color::Green })
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(if form.active_field == 2 {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    })
             } else {
                 Style::default().fg(Color::DarkGray)
-            }
+            },
         );
         let headers_no = Span::styled(
             " No ",
             if !form.has_headers {
-                Style::default().fg(Color::Black).bg(if form.active_field == 2 { Color::Yellow } else { Color::Green })
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(if form.active_field == 2 {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    })
             } else {
                 Style::default().fg(Color::DarkGray)
-            }
+            },
         );
         let headers_line = Line::from(vec![
             headers_label,
@@ -1160,14 +1273,20 @@ fn draw_import_popup(f: &mut Frame, app: &App) {
         } else {
             Style::default().fg(Color::Green)
         };
-        f.render_widget(Paragraph::new(" [ Preview ] ").style(preview_btn_style), btn_layout[1]);
+        f.render_widget(
+            Paragraph::new(" [ Preview ] ").style(preview_btn_style),
+            btn_layout[1],
+        );
 
         let cancel_btn_style = if form.active_field == 4 {
             Style::default().fg(Color::Black).bg(Color::Yellow)
         } else {
             Style::default().fg(Color::Red)
         };
-        f.render_widget(Paragraph::new(" [ Cancel ] ").style(cancel_btn_style), btn_layout[3]);
+        f.render_widget(
+            Paragraph::new(" [ Cancel ] ").style(cancel_btn_style),
+            btn_layout[3],
+        );
     } else {
         let area = centered_rect(85, 22, f.area());
         f.render_widget(Clear, area);
@@ -1193,30 +1312,45 @@ fn draw_import_popup(f: &mut Frame, app: &App) {
             Span::raw("File: "),
             Span::styled(&form.filepath, Style::default().fg(Color::Cyan)),
             Span::raw("  |  Parsed: "),
-            Span::styled(format!("{} rows", form.parsed_rows.len()), Style::default().fg(Color::Green)),
+            Span::styled(
+                format!("{} rows", form.parsed_rows.len()),
+                Style::default().fg(Color::Green),
+            ),
         ]);
         f.render_widget(Paragraph::new(info_line), chunks[0]);
 
-        let mut mapping_spans = vec![Span::styled("Mapping:  ", Style::default().add_modifier(Modifier::BOLD))];
+        let mut mapping_spans = vec![Span::styled(
+            "Mapping:  ",
+            Style::default().add_modifier(Modifier::BOLD),
+        )];
         for (csv_col, db_col_opt) in &form.mapped_columns {
             mapping_spans.push(Span::raw(format!("{} -> ", csv_col)));
             if let Some(db_col) = db_col_opt {
-                mapping_spans.push(Span::styled(format!("{}  ", db_col), Style::default().fg(Color::Green)));
+                mapping_spans.push(Span::styled(
+                    format!("{}  ", db_col),
+                    Style::default().fg(Color::Green),
+                ));
             } else {
-                mapping_spans.push(Span::styled("[Skip]  ", Style::default().fg(Color::DarkGray)));
+                mapping_spans.push(Span::styled(
+                    "[Skip]  ",
+                    Style::default().fg(Color::DarkGray),
+                ));
             }
         }
-        f.render_widget(Paragraph::new(Line::from(mapping_spans)).wrap(ratatui::widgets::Wrap { trim: true }), chunks[1]);
+        f.render_widget(
+            Paragraph::new(Line::from(mapping_spans)).wrap(ratatui::widgets::Wrap { trim: true }),
+            chunks[1],
+        );
 
         let preview_rows = form.parsed_rows.iter().take(5);
-        let headers: Row = Row::new(
-            form.csv_columns.iter().map(|c| Cell::from(c.as_str()).style(Style::default().add_modifier(Modifier::BOLD)))
-        ).style(Style::default().bg(Color::DarkGray));
+        let headers: Row =
+            Row::new(form.csv_columns.iter().map(|c| {
+                Cell::from(c.as_str()).style(Style::default().add_modifier(Modifier::BOLD))
+            }))
+            .style(Style::default().bg(Color::DarkGray));
 
         let rows: Vec<Row> = preview_rows
-            .map(|r| {
-                Row::new(r.iter().map(|c| Cell::from(c.as_str())))
-            })
+            .map(|r| Row::new(r.iter().map(|c| Cell::from(c.as_str()))))
             .collect();
 
         let num_cols = form.csv_columns.len().max(1);
@@ -1225,9 +1359,11 @@ fn draw_import_popup(f: &mut Frame, app: &App) {
             .map(|_| Constraint::Percentage(col_percent))
             .collect();
 
-        let table = Table::new(rows, widths)
-            .header(headers)
-            .block(Block::default().borders(Borders::ALL).title(" Sample Data Preview (First 5 rows) "));
+        let table = Table::new(rows, widths).header(headers).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Sample Data Preview (First 5 rows) "),
+        );
         f.render_widget(table, chunks[2]);
 
         let btn_layout = Layout::default()
@@ -1246,14 +1382,20 @@ fn draw_import_popup(f: &mut Frame, app: &App) {
         } else {
             Style::default().fg(Color::Green)
         };
-        f.render_widget(Paragraph::new(" [ Confirm Import ] ").style(import_btn_style), btn_layout[1]);
+        f.render_widget(
+            Paragraph::new(" [ Confirm Import ] ").style(import_btn_style),
+            btn_layout[1],
+        );
 
         let cancel_btn_style = if form.active_field == 4 {
             Style::default().fg(Color::Black).bg(Color::Yellow)
         } else {
             Style::default().fg(Color::Red)
         };
-        f.render_widget(Paragraph::new(" [ Cancel ] ").style(cancel_btn_style), btn_layout[3]);
+        f.render_widget(
+            Paragraph::new(" [ Cancel ] ").style(cancel_btn_style),
+            btn_layout[3],
+        );
     }
 }
 
@@ -1277,11 +1419,12 @@ fn draw_named_queries_list(f: &mut Frame, app: &App) {
 
     if app.named_queries.is_empty() {
         f.render_widget(
-            Paragraph::new("\n  No named queries saved yet. Press Ctrl+S in Query screen to save.").block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Named Queries — Esc: close "),
-            ),
+            Paragraph::new("\n  No named queries saved yet. Press Ctrl+S in Query screen to save.")
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(" Named Queries — Esc: close "),
+                ),
             area,
         );
         return;

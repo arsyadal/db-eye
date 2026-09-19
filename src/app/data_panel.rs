@@ -1,4 +1,4 @@
-use super::{App, CrudForm, ExportForm, ImportForm, Focus, Screen};
+use super::{App, CrudForm, ExportForm, Focus, ImportForm, Screen};
 use crate::db::{ColumnInfo, format_db_error};
 use crossterm::event::KeyCode;
 
@@ -137,7 +137,11 @@ impl App {
                     return;
                 }
                 if let Some(tab) = self.current_tab() {
-                    let db_cols = tab.result.as_ref().map(|r| r.columns.clone()).unwrap_or_default();
+                    let db_cols = tab
+                        .result
+                        .as_ref()
+                        .map(|r| r.columns.clone())
+                        .unwrap_or_default();
                     self.import_form = Some(ImportForm::new(db_cols));
                     self.screen = Screen::ImportForm;
                 }
@@ -170,7 +174,8 @@ impl App {
             KeyCode::Char('C') => {
                 if let Some(tab) = self.current_tab() {
                     let col_idx = tab.col_offset;
-                    let col_cells: Vec<String> = tab.display_rows()
+                    let col_cells: Vec<String> = tab
+                        .display_rows()
                         .iter()
                         .filter_map(|r| r.get(col_idx).cloned())
                         .collect();

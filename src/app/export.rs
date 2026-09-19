@@ -50,7 +50,8 @@ impl ExportForm {
 
     pub fn update_filename_extension(&mut self) {
         let path = std::path::Path::new(&self.filename);
-        let stem = path.file_stem()
+        let stem = path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("export");
         let ext = match self.format {
@@ -82,13 +83,18 @@ impl App {
                     form.active_field = 5;
                 }
                 // Skip delimiter and headers for non-CSV formats
-                if form.format != ExportFormat::Csv && (form.active_field == 1 || form.active_field == 2) && key == KeyCode::Up {
+                if form.format != ExportFormat::Csv
+                    && (form.active_field == 1 || form.active_field == 2)
+                    && key == KeyCode::Up
+                {
                     form.active_field = 0;
                 }
             }
             KeyCode::Down => {
                 form.active_field += 1;
-                if form.format != ExportFormat::Csv && (form.active_field == 1 || form.active_field == 2) {
+                if form.format != ExportFormat::Csv
+                    && (form.active_field == 1 || form.active_field == 2)
+                {
                     form.active_field = 3;
                 }
                 if form.active_field > 5 {
@@ -97,22 +103,61 @@ impl App {
             }
             KeyCode::Left | KeyCode::Right => {
                 match form.active_field {
-                    0 => { // Format
+                    0 => {
+                        // Format
                         form.format = match form.format {
-                            ExportFormat::Csv => if key == KeyCode::Left { ExportFormat::Sql } else { ExportFormat::Json },
-                            ExportFormat::Json => if key == KeyCode::Left { ExportFormat::Csv } else { ExportFormat::Sql },
-                            ExportFormat::Sql => if key == KeyCode::Left { ExportFormat::Json } else { ExportFormat::Csv },
+                            ExportFormat::Csv => {
+                                if key == KeyCode::Left {
+                                    ExportFormat::Sql
+                                } else {
+                                    ExportFormat::Json
+                                }
+                            }
+                            ExportFormat::Json => {
+                                if key == KeyCode::Left {
+                                    ExportFormat::Csv
+                                } else {
+                                    ExportFormat::Sql
+                                }
+                            }
+                            ExportFormat::Sql => {
+                                if key == KeyCode::Left {
+                                    ExportFormat::Json
+                                } else {
+                                    ExportFormat::Csv
+                                }
+                            }
                         };
                         form.update_filename_extension();
                     }
-                    1 => { // Delimiter
+                    1 => {
+                        // Delimiter
                         form.csv_delimiter = match form.csv_delimiter {
-                            CsvDelimiter::Comma => if key == KeyCode::Left { CsvDelimiter::Tab } else { CsvDelimiter::Semicolon },
-                            CsvDelimiter::Semicolon => if key == KeyCode::Left { CsvDelimiter::Comma } else { CsvDelimiter::Tab },
-                            CsvDelimiter::Tab => if key == KeyCode::Left { CsvDelimiter::Semicolon } else { CsvDelimiter::Comma },
+                            CsvDelimiter::Comma => {
+                                if key == KeyCode::Left {
+                                    CsvDelimiter::Tab
+                                } else {
+                                    CsvDelimiter::Semicolon
+                                }
+                            }
+                            CsvDelimiter::Semicolon => {
+                                if key == KeyCode::Left {
+                                    CsvDelimiter::Comma
+                                } else {
+                                    CsvDelimiter::Tab
+                                }
+                            }
+                            CsvDelimiter::Tab => {
+                                if key == KeyCode::Left {
+                                    CsvDelimiter::Semicolon
+                                } else {
+                                    CsvDelimiter::Comma
+                                }
+                            }
                         };
                     }
-                    2 => { // Headers
+                    2 => {
+                        // Headers
                         form.csv_headers = !form.csv_headers;
                     }
                     _ => {}
@@ -126,14 +171,17 @@ impl App {
             }
             KeyCode::Enter => {
                 match form.active_field {
-                    3 => { // If enter on filename, go to export button or just export directly
+                    3 => {
+                        // If enter on filename, go to export button or just export directly
                         form.active_field = 4;
                     }
-                    4 => { // Export
+                    4 => {
+                        // Export
                         if let Some(tab) = self.current_tab() {
                             match tab.export_data(&form) {
                                 Ok(()) => {
-                                    self.status = format!("Exported successfully to {}", form.filename);
+                                    self.status =
+                                        format!("Exported successfully to {}", form.filename);
                                     self.screen = Screen::Main;
                                     return;
                                 }
@@ -143,7 +191,8 @@ impl App {
                             }
                         }
                     }
-                    5 => { // Cancel
+                    5 => {
+                        // Cancel
                         self.screen = Screen::Main;
                         self.status = "Export cancelled".to_string();
                         return;
@@ -151,7 +200,9 @@ impl App {
                     _ => {
                         // For fields 0, 1, 2: enter moves down
                         form.active_field += 1;
-                        if form.format != ExportFormat::Csv && (form.active_field == 1 || form.active_field == 2) {
+                        if form.format != ExportFormat::Csv
+                            && (form.active_field == 1 || form.active_field == 2)
+                        {
                             form.active_field = 3;
                         }
                     }
@@ -186,7 +237,10 @@ impl Tab {
                         .map(|cell| {
                             if cell == NULL_DISPLAY {
                                 "".to_string()
-                            } else if cell.contains(delimiter) || cell.contains('"') || cell.contains('\n') {
+                            } else if cell.contains(delimiter)
+                                || cell.contains('"')
+                                || cell.contains('\n')
+                            {
                                 format!("\"{}\"", cell.replace('"', "\"\""))
                             } else {
                                 cell.clone()
@@ -220,13 +274,16 @@ impl Tab {
                 let mut content = String::new();
                 let table_name = self.path.split('/').next_back().unwrap_or("table");
                 let quoted_table = format!("\"{}\"", table_name.replace('"', "\"\""));
-                let columns_list = result.columns.iter()
+                let columns_list = result
+                    .columns
+                    .iter()
                     .map(|c| format!("\"{}\"", c.replace('"', "\"\"")))
                     .collect::<Vec<_>>()
                     .join(", ");
-                
+
                 for row in &self.filtered_rows {
-                    let values_list = row.iter()
+                    let values_list = row
+                        .iter()
                         .map(|cell| {
                             if cell == NULL_DISPLAY {
                                 "NULL".to_string()
