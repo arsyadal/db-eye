@@ -90,17 +90,17 @@ impl Tab {
 impl App {
     fn data_help(&self) -> &'static str {
         if self.read_only {
-            "READ-ONLY  |  j/k:nav  PgUp/PgDn:page  g:jump  o:sort  v:export  s:stats  /:search  :::query  Ctrl+H:history  Esc:back"
+            "READ-ONLY  |  j/k:nav  PgUp/PgDn:page  g:jump  o:sort  v:export  s:stats  /:search  :::SQL query  Ctrl+H:history  Esc:back"
         } else {
-            "j/k:nav  i:insert  u:update  d:delete  e:edit  PgUp/PgDn:page  g:jump  o:sort  v:export  s:stats  /:search  :::query  Ctrl+H:history  Esc:back"
+            "j/k:nav  i:insert  u:update  d:delete  e:edit  PgUp/PgDn:page  g:jump  o:sort  v:export  s:stats  /:search  :::SQL query  Ctrl+H:history  Esc:back"
         }
     }
 
     pub(super) fn table_help(&self) -> &'static str {
         if self.read_only {
-            "READ-ONLY  |  Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close  Esc:back"
+            "READ-ONLY  |  Tab:focus  j/k:nav  Enter:open  ::SQL query  Ctrl+H:history  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close  Esc:back"
         } else {
-            "Tab:focus  j/k:nav  Enter:open  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close  Esc:back"
+            "Tab:focus  j/k:nav  Enter:open  ::SQL query  Ctrl+H:history  [:prev-tab  ]:next-tab  Ctrl+T:new  Ctrl+W:close  Esc:back"
         }
     }
 
@@ -208,6 +208,11 @@ impl App {
                 self.load_table_data().await;
                 self.focus = Focus::Data;
                 self.status = self.data_help().into();
+            }
+            KeyCode::Char(':') => {
+                self.query_input.clear();
+                self.screen = Screen::Query;
+                self.status = "SQL query — type SQL and press Enter to execute; Esc cancels".into();
             }
             KeyCode::Esc => {
                 self.go_back().await;
