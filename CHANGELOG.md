@@ -27,6 +27,11 @@ Releases follow the **MAJOR.MINOR.PATCH** structure:
   - Internal refactoring and performance optimizations without changing public behavior.
 
 ## [Unreleased]
+## [0.4.1] - 2026-10-11
+
+### Fixed
+
+- Fixed MS SQL connection URL parsing when passwords contain `@` characters (e.g. `Password@123`), correctly separating credentials from the host address.
 
 ## [0.4.0] - 2026-10-11
 
