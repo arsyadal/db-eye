@@ -8,7 +8,7 @@
 [![CI](https://github.com/arsyadal/db-eye/actions/workflows/ci.yml/badge.svg)](https://github.com/arsyadal/db-eye/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Browser database Terminal UI (TUI) yang cepat dan ringan untuk SQLite, PostgreSQL, dan MySQL.
+Browser database Terminal UI (TUI) yang cepat dan ringan untuk SQLite, PostgreSQL, MySQL, dan MS SQL Server.
 
 ![Demo DB-Eye](docs/demo.gif)
 
@@ -63,14 +63,14 @@ db-eye --help
 
 | Tombol | Tindakan |
 |--------|----------|
-| `←` / `→` | Ganti tipe database (SQLite / PostgreSQL / MySQL) |
+| `←` / `→` | Ganti tipe database (SQLite / PostgreSQL / MySQL / MS SQL) |
 | `Tab` / `j` / `k` | Pindah antar field input form |
 | `Enter` | Sambungkan (Connect) |
 | `Esc` | Kembali ke tampilan utama (jika tab sudah terbuka) |
 
 **SQLite** — masukkan path file database, lalu tekan Enter. *(File akan otomatis dibuat jika belum ada)*.
 
-**PostgreSQL / MySQL** — isi Host, Port, User, Password → Enter → pilih database dari daftar.
+**PostgreSQL / MySQL / MS SQL** — isi Host, Port, User, Password → Enter → pilih database dari daftar.
 
 Atau tempel URL koneksi lengkap pada kolom **Connection URL (optional)** lalu tekan Enter untuk menyambung langsung:
 
@@ -190,7 +190,7 @@ Gunakan flag `--read-only` / `-r` untuk mengaktifkan proteksi baca-saja tingkat 
 | SQLite | `./path/relatif.db` atau `/path/absolut/file.db` |
 | PostgreSQL | `postgres://user:pass@host:5432/dbname` |
 | MySQL | `mysql://user:pass@host:3306/dbname` |
-
+| MS SQL | `mssql://user:pass@host:1433/dbname` |
 ## Fitur Unggulan
 
 - Navigasi tabel dan data bergaya vim (`h/j/k/l`) yang responsif dan cepat
@@ -212,7 +212,8 @@ Gunakan flag `--read-only` / `-r` untuk mengaktifkan proteksi baca-saja tingkat 
 - Ekspor data ke CSV (dengan opsi delimiter/header), JSON, atau SQL INSERT
 - Impor data dari file CSV dengan pemetaan kolom dan preview data
 - Mendukung banyak koneksi sekaligus dalam tab terpisah
-- Mendukung schema PostgreSQL non-public
+- PostgreSQL / MySQL / MS SQL: koneksi via form atau connection URL lengkap
+- Mendukung schema PostgreSQL dan MS SQL (`public`, `dbo`, schema kustom)
 - Penyesuaian lebar kolom otomatis
 - Tampilan TUI monokrom kontras tinggi yang nyaman di semua terminal
 - Tampilan views diberi label pembeda `(view)`

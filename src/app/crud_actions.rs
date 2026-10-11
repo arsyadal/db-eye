@@ -201,7 +201,6 @@ impl App {
                         let doubled = format!("{quote}{quote}");
                         format!("{quote}{}{quote}", ident.replace(quote, &doubled))
                     };
-                    let numbered_placeholders = tab.db.uses_numbered_placeholders();
                     let mut values = Vec::new();
                     let conditions: Vec<String> = pk_columns
                         .iter()
@@ -214,11 +213,7 @@ impl App {
                                 .cloned()
                                 .unwrap_or_default();
                             values.push(CrudForm::form_value(&pk_val));
-                            let placeholder = if numbered_placeholders {
-                                format!("${}", i + 1)
-                            } else {
-                                "?".to_string()
-                            };
+                            let placeholder = tab.db.placeholder(i + 1);
                             format!("{} = {}", quote_ident(&pk.name), placeholder)
                         })
                         .collect();

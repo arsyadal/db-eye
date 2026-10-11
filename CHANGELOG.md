@@ -28,8 +28,27 @@ Releases follow the **MAJOR.MINOR.PATCH** structure:
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-10-11
+## [0.4.0] - 2026-10-11
 
+### Added
+
+- Microsoft SQL Server (MS SQL) Support:
+  - Added native MS SQL Server support via `tiberius` asynchronous pure-Rust driver.
+  - Connect screen support for `MS SQL` with default port `1433`, default user `sa`, and connection strings `mssql://user:pass@host:1433/database` or `sqlserver://...`.
+  - Database list browser querying `sys.databases` with support for creating new databases (`n`).
+  - Schema list browser querying `information_schema.schemata` with default `dbo` schema.
+  - Full table and view browsing, data grid with pagination (`OFFSET ... ROWS FETCH NEXT ... ROWS ONLY`), and sorting.
+  - Column metadata and index statistics inspection from `sys.indexes` and `information_schema.columns`.
+  - Square bracket identifier quoting (`[table].[column]`) and `@P{i}` bind parameter placeholders.
+- Interactive New Database Creation:
+  - Press `n` on the `Databases` screen to open a dialog to create a new database on PostgreSQL, MySQL, and MS SQL Server.
+- Pure Monochrome UI Styling:
+  - Inverted black-and-white (`Modifier::REVERSED | Modifier::BOLD`) styling for all buttons, status bar keycap badges, and dialog actions.
+- SQL Query Autocompletion & Suggestions:
+  - Live suggestion bar below the SQL query editor showing real-time matching table names, column names, and SQL keywords.
+  - Press `Tab` to autocomplete the highlighted suggestion and `Shift+Tab` to cycle suggestions backward.
+
+## [0.3.0] - 2026-10-11
 ### Added
 
 - Self-Update Command & Background Notification:

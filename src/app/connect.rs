@@ -10,6 +10,7 @@ pub enum DbTypeChoice {
     Sqlite,
     Postgres,
     Mysql,
+    Mssql,
 }
 
 impl DbTypeChoice {
@@ -18,6 +19,7 @@ impl DbTypeChoice {
             Self::Sqlite => "SQLite",
             Self::Postgres => "PostgreSQL",
             Self::Mysql => "MySQL",
+            Self::Mssql => "MS SQL",
         }
     }
     pub fn hint(&self) -> &str {
@@ -25,12 +27,14 @@ impl DbTypeChoice {
             Self::Sqlite => "./path/to/file.db",
             Self::Postgres => "connect → pick database from list",
             Self::Mysql => "connect → pick database from list",
+            Self::Mssql => "connect → pick database from list",
         }
     }
     pub fn default_port(&self) -> &str {
         match self {
             Self::Postgres => "5432",
             Self::Mysql => "3306",
+            Self::Mssql => "1433",
             _ => "",
         }
     }
@@ -38,18 +42,20 @@ impl DbTypeChoice {
         match self {
             Self::Sqlite => Self::Postgres,
             Self::Postgres => Self::Mysql,
-            Self::Mysql => Self::Sqlite,
+            Self::Mysql => Self::Mssql,
+            Self::Mssql => Self::Sqlite,
         }
     }
     pub fn prev(&self) -> Self {
         match self {
-            Self::Sqlite => Self::Mysql,
+            Self::Sqlite => Self::Mssql,
             Self::Postgres => Self::Sqlite,
             Self::Mysql => Self::Postgres,
+            Self::Mssql => Self::Mysql,
         }
     }
     pub fn all() -> Vec<Self> {
-        vec![Self::Sqlite, Self::Postgres, Self::Mysql]
+        vec![Self::Sqlite, Self::Postgres, Self::Mysql, Self::Mssql]
     }
 }
 
@@ -70,6 +76,7 @@ impl ConnectForm {
         let user = match db_type {
             DbTypeChoice::Postgres => "postgres".to_string(),
             DbTypeChoice::Mysql => "root".to_string(),
+            DbTypeChoice::Mssql => "sa".to_string(),
             DbTypeChoice::Sqlite => String::new(),
         };
         Self {
@@ -116,6 +123,10 @@ impl ConnectForm {
                 "mysql://{}:{}@{}:{}/information_schema",
                 self.user, self.pass, self.host, self.port
             ),
+            DbTypeChoice::Mssql => format!(
+                "mssql://{}:{}@{}:{}/master",
+                self.user, self.pass, self.host, self.port
+            ),
             _ => String::new(),
         }
     }
@@ -128,6 +139,10 @@ impl ConnectForm {
             ),
             DbTypeChoice::Mysql => format!(
                 "mysql://{}:{}@{}:{}/{}",
+                self.user, self.pass, self.host, self.port, db_name
+            ),
+            DbTypeChoice::Mssql => format!(
+                "mssql://{}:{}@{}:{}/{}",
                 self.user, self.pass, self.host, self.port, db_name
             ),
             _ => String::new(),
@@ -380,6 +395,7 @@ impl App {
             let default_u = match self.db_type {
                 DbTypeChoice::Postgres => "postgres",
                 DbTypeChoice::Mysql => "root",
+                DbTypeChoice::Mssql => "sa",
                 _ => "",
             };
             self.connect_form.user = default_u.to_string();
@@ -437,12 +453,19 @@ impl App {
                 let mut tab = Tab::new(display.clone(), url.clone(), client);
                 self.seed_tab_history(&mut tab);
 
-                if tab.db.db_type == crate::db::DbType::Postgres {
+                if tab.db.db_type == crate::db::DbType::Postgres
+                    || tab.db.db_type == crate::db::DbType::Mssql
+                {
                     match tab.db.list_schemas().await {
                         Ok(schemas) => {
                             tab.schemas = schemas;
+                            let default_s = if tab.db.db_type == crate::db::DbType::Mssql {
+                                "dbo"
+                            } else {
+                                "public"
+                            };
                             tab.schema_index =
-                                tab.schemas.iter().position(|s| s == "public").unwrap_or(0);
+                                tab.schemas.iter().position(|s| s == default_s).unwrap_or(0);
                             self.tabs.push(tab);
                             self.active_tab = self.tabs.len() - 1;
                             self.screen = Screen::Schemas;
@@ -512,12 +535,19 @@ impl App {
                 self.seed_tab_history(&mut tab);
                 tab.server_info = Some((sc_form, sc_db_type));
 
-                if tab.db.db_type == crate::db::DbType::Postgres {
+                if tab.db.db_type == crate::db::DbType::Postgres
+                    || tab.db.db_type == crate::db::DbType::Mssql
+                {
                     match tab.db.list_schemas().await {
                         Ok(schemas) => {
                             tab.schemas = schemas;
+                            let default_s = if tab.db.db_type == crate::db::DbType::Mssql {
+                                "dbo"
+                            } else {
+                                "public"
+                            };
                             tab.schema_index =
-                                tab.schemas.iter().position(|s| s == "public").unwrap_or(0);
+                                tab.schemas.iter().position(|s| s == default_s).unwrap_or(0);
                             self.tabs.push(tab);
                             self.active_tab = self.tabs.len() - 1;
                             self.screen = Screen::Schemas;
@@ -737,12 +767,15 @@ impl App {
                     DbTypeChoice::Mysql => {
                         format!("CREATE DATABASE `{}`", db_name.replace('`', "``"))
                     }
+                    DbTypeChoice::Mssql => {
+                        format!("CREATE DATABASE [{}]", db_name.replace(']', "]]"))
+                    }
                     _ => String::new(),
                 };
 
                 self.status = format!("Creating database '{}'...", db_name);
                 match crate::db::DbClient::connect(&server_url).await {
-                    Ok(client) => match sqlx::query(&sql).execute(&client.pool).await {
+                    Ok(client) => match client.execute_query(&sql).await {
                         Ok(_) => match client.list_databases().await {
                             Ok(databases) => {
                                 let new_index =
@@ -826,7 +859,7 @@ mod tests {
         assert_eq!(select_res.rows.len(), 1);
         assert_eq!(select_res.rows[0][0], "12.34");
 
-        app.tabs[0].db.pool.close().await;
+        app.tabs[0].db.close().await;
         let _ = std::fs::remove_file(&path);
     }
 }

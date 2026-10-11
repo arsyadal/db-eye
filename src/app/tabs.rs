@@ -223,12 +223,15 @@ impl App {
     }
 
     async fn go_back(&mut self) {
-        let is_postgres = self
+        let has_schemas = self
             .current_tab()
-            .map(|t| t.db.db_type == crate::db::DbType::Postgres)
+            .map(|t| {
+                t.db.db_type == crate::db::DbType::Postgres
+                    || t.db.db_type == crate::db::DbType::Mssql
+            })
             .unwrap_or(false);
 
-        if is_postgres {
+        if has_schemas {
             self.screen = Screen::Schemas;
             self.status = "j/k: navigate  Enter: select schema  Esc: back".into();
             return;
@@ -289,12 +292,13 @@ impl App {
                 return;
             }
         };
-        let is_postgres = client.db_type == crate::db::DbType::Postgres;
+        let has_schemas = client.db_type == crate::db::DbType::Postgres
+            || client.db_type == crate::db::DbType::Mssql;
         if let Some(tab) = self.current_tab_mut() {
             tab.db = client;
         }
 
-        if is_postgres {
+        if has_schemas {
             let schemas = match self.current_tab() {
                 Some(tab) => tab.db.list_schemas().await.unwrap_or_default(),
                 None => return,

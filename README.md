@@ -8,7 +8,7 @@
 [![CI](https://github.com/arsyadal/db-eye/actions/workflows/ci.yml/badge.svg)](https://github.com/arsyadal/db-eye/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Fast, lightweight Terminal UI database browser for SQLite, PostgreSQL, and MySQL.
+Fast, lightweight Terminal UI database browser for SQLite, PostgreSQL, MySQL, and MS SQL Server.
 
 ![DB-Eye demo](docs/demo.gif)
 ## Install
@@ -60,14 +60,14 @@ db-eye --help
 
 | Key | Action |
 |-----|--------|
-| `←` / `→` | Switch DB type (SQLite / PostgreSQL / MySQL) |
+| `←` / `→` | Switch DB type (SQLite / PostgreSQL / MySQL / MS SQL) |
 | `Tab` / `j` / `k` | Move between form fields |
 | `Enter` | Connect |
 | `Esc` | Back to main (if tab open) |
 
 **SQLite** — enter file path, press Enter.
 
-**PostgreSQL / MySQL** — fill Host, Port, User, Password → Enter → pick database from list.
+**PostgreSQL / MySQL / MS SQL** — fill Host, Port, User, Password → Enter → pick database from list.
 
 Or paste a full connection URL in **Connection URL (optional)** and press Enter to connect directly:
 
@@ -185,7 +185,7 @@ Use `--read-only` / `-r` to enforce hardware- and engine-level read-only protect
 | SQLite | `./relative/path.db` or `/abs/path.db` |
 | PostgreSQL | `postgres://user:pass@host:5432/dbname` |
 | MySQL | `mysql://user:pass@host:3306/dbname` |
-
+| MS SQL | `mssql://user:pass@host:1433/dbname` |
 ## Features
 
 - Browse tables and data with vim-style navigation
@@ -208,8 +208,8 @@ Use `--read-only` / `-r` to enforce hardware- and engine-level read-only protect
 - Export current view to CSV (with delimiter/header options), JSON, or SQL INSERT statements
 - Import CSV into an existing table with column mapping and data preview
 - Multiple simultaneous DB connections (tabs)
-- PostgreSQL/MySQL: connect via form flow or full connection URL
-- PostgreSQL: connect to server → pick database from list → schema selector
+- PostgreSQL/MySQL/MS SQL: connect via form flow or full connection URL
+- PostgreSQL/MS SQL: schema selection support (`public`, `dbo`, custom schemas)
 - Auto column width fitting
 - Monochrome TUI — works in any terminal
 - Views listed alongside tables, labeled `(view)`

@@ -1,12 +1,12 @@
 [package]
 name = "db-eye"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
-description = "Terminal UI database browser for SQLite, PostgreSQL, and MySQL"
+description = "Terminal UI database browser for SQLite, PostgreSQL, MySQL, and MS SQL Server"
 license = "MIT"
 repository = "https://github.com/arsyadal/db-eye"
 homepage = "https://github.com/arsyadal/db-eye"
-keywords = ["database", "tui", "sqlite", "postgresql", "mysql"]
+keywords = ["database", "tui", "sqlite", "postgresql", "mysql", "mssql"]
 categories = ["command-line-utilities", "database"]
 readme = "README.md"
 
@@ -20,3 +20,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 ureq = { version = "2.12", default-features = false, features = ["tls", "json"] }
 self-replace = "1.5.0"
+tiberius = { version = "0.13.0", default-features = false, features = ["rustls", "tds73", "tds80", "chrono", "sql-browser-tokio"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+chrono = "0.4"

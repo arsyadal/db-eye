@@ -160,18 +160,26 @@ impl CrudForm {
     }
 
     fn quote_ident(&self, ident: &str) -> String {
-        let doubled = format!("{}{}", self.ident_quote, self.ident_quote);
-        format!(
-            "{}{}{}",
-            self.ident_quote,
-            ident.replace(self.ident_quote, &doubled),
-            self.ident_quote
-        )
+        if self.ident_quote == '[' {
+            format!("[{}]", ident.replace(']', "]]"))
+        } else {
+            let doubled = format!("{}{}", self.ident_quote, self.ident_quote);
+            format!(
+                "{}{}{}",
+                self.ident_quote,
+                ident.replace(self.ident_quote, &doubled),
+                self.ident_quote
+            )
+        }
     }
 
     fn placeholder(&self, index: usize) -> String {
         if self.numbered_placeholders {
-            format!("${index}")
+            if self.ident_quote == '[' {
+                format!("@P{index}")
+            } else {
+                format!("${index}")
+            }
         } else {
             "?".to_string()
         }
@@ -422,7 +430,7 @@ mod tests {
         std::fs::File::create(&path).unwrap();
         let db = DbClient::connect(path.to_str().unwrap()).await.unwrap();
         sqlx::query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)")
-            .execute(&db.pool)
+            .execute(db.pool())
             .await
             .unwrap();
 
@@ -473,7 +481,7 @@ mod tests {
         let result = db.execute_query("SELECT id FROM users").await.unwrap();
         assert!(result.rows.is_empty());
 
-        db.pool.close().await;
+        db.close().await;
         let _ = std::fs::remove_file(path);
     }
 
@@ -489,7 +497,7 @@ mod tests {
         sqlx::query(
             "CREATE TABLE memberships (tenant_id TEXT, user_id TEXT, name TEXT, PRIMARY KEY (tenant_id, user_id))",
         )
-        .execute(&db.pool)
+        .execute(db.pool())
         .await
         .unwrap();
 
@@ -570,7 +578,7 @@ mod tests {
             .unwrap();
         assert!(result.rows.is_empty());
 
-        db.pool.close().await;
+        db.close().await;
         let _ = std::fs::remove_file(path);
     }
 }

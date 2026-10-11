@@ -84,7 +84,7 @@ impl App {
                 {
                     let prefix = match tab.db.db_type {
                         DbType::Sqlite => "EXPLAIN QUERY PLAN ",
-                        DbType::Postgres | DbType::Mysql => "EXPLAIN ",
+                        DbType::Postgres | DbType::Mysql | DbType::Mssql => "EXPLAIN ",
                     };
                     let explain_sql = format!("{}{}", prefix, sql);
                     self.execute_current_query(explain_sql).await;
@@ -837,7 +837,7 @@ mod tests {
         assert_eq!(app.tabs[0].tables.len(), 1);
         assert_eq!(app.tabs[0].tables[0].name, "products");
 
-        app.tabs[0].db.pool.close().await;
+        app.tabs[0].db.close().await;
         let _ = std::fs::remove_file(&path);
     }
 

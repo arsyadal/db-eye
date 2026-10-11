@@ -1,10 +1,15 @@
 use sqlx::{AnyPool, Column, Row, any::AnyRow, error::ErrorKind};
+use std::sync::Arc;
+use tokio::net::TcpStream;
+use tokio::sync::Mutex;
+use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum DbType {
     Sqlite,
     Postgres,
     Mysql,
+    Mssql,
 }
 
 impl DbType {
@@ -13,24 +18,82 @@ impl DbType {
             DbType::Postgres
         } else if url.starts_with("mysql") {
             DbType::Mysql
+        } else if url.starts_with("mssql") || url.starts_with("sqlserver") {
+            DbType::Mssql
         } else {
             DbType::Sqlite
         }
     }
 }
 
+pub type MssqlStream = Compat<TcpStream>;
+pub type MssqlClient = Arc<Mutex<tiberius::Client<MssqlStream>>>;
+
+#[derive(Clone)]
+pub enum DbBackend {
+    Sqlx(AnyPool),
+    Mssql {
+        client: MssqlClient,
+        #[allow(dead_code)]
+        config: Box<tiberius::Config>,
+    },
+}
+
+#[derive(Clone)]
 pub struct DbClient {
-    pub pool: AnyPool,
+    pub backend: DbBackend,
     pub db_type: DbType,
 }
 
-pub fn format_db_error(action: &str, error: &sqlx::Error) -> String {
+#[derive(Debug)]
+pub enum DbError {
+    Sqlx(sqlx::Error),
+    Mssql(String),
+}
+
+impl From<sqlx::Error> for DbError {
+    fn from(e: sqlx::Error) -> Self {
+        DbError::Sqlx(e)
+    }
+}
+
+impl From<String> for DbError {
+    fn from(s: String) -> Self {
+        DbError::Mssql(s)
+    }
+}
+
+impl From<&str> for DbError {
+    fn from(s: &str) -> Self {
+        DbError::Mssql(s.to_string())
+    }
+}
+
+impl std::fmt::Display for DbError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DbError::Sqlx(e) => write!(f, "{e}"),
+            DbError::Mssql(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for DbError {}
+
+pub fn format_db_error(action: &str, error: &DbError) -> String {
     let prefix = if action.is_empty() {
         "Database error".to_string()
     } else {
         format!("{} failed", action)
     };
 
+    match error {
+        DbError::Sqlx(sqlx_err) => format_sqlx_error(&prefix, sqlx_err),
+        DbError::Mssql(msg) => classify_db_message(&prefix, msg),
+    }
+}
+
+fn format_sqlx_error(prefix: &str, error: &sqlx::Error) -> String {
     match error {
         sqlx::Error::Database(db_error) => {
             let constraint = db_error
@@ -56,7 +119,7 @@ pub fn format_db_error(action: &str, error: &sqlx::Error) -> String {
                     {
                         format!("{prefix}: {summary}{constraint} ({})", db_error.message())
                     } else {
-                        classify_db_message(&prefix, db_error.message())
+                        classify_db_message(prefix, db_error.message())
                     }
                 }
             }
@@ -73,7 +136,7 @@ pub fn format_db_error(action: &str, error: &sqlx::Error) -> String {
             format!("{prefix}: invalid database configuration ({error})")
         }
         sqlx::Error::Tls(_) => format!("{prefix}: TLS connection failed ({error})"),
-        _ => classify_db_message(&prefix, &error.to_string()),
+        _ => classify_db_message(prefix, &error.to_string()),
     }
 }
 
@@ -189,111 +252,291 @@ pub(crate) fn normalize_sqlite_url(url: &str) -> String {
     }
 }
 
+pub fn parse_mssql_url(url: &str) -> Result<tiberius::Config, String> {
+    let stripped = url
+        .strip_prefix("mssql://")
+        .or_else(|| url.strip_prefix("sqlserver://"))
+        .unwrap_or(url);
+
+    let (auth_host, database) = match stripped.split_once('/') {
+        Some((ah, db)) => (ah, db),
+        None => (stripped, "master"),
+    };
+
+    let (auth, host_port) = match auth_host.split_once('@') {
+        Some((a, hp)) => (Some(a), hp),
+        None => (None, auth_host),
+    };
+
+    let (host, port) = match host_port.split_once(':') {
+        Some((h, p)) => (h, p.parse::<u16>().unwrap_or(1433)),
+        None => (host_port, 1433),
+    };
+
+    let mut config = tiberius::Config::new();
+    config.host(host);
+    config.port(port);
+
+    if let Some(auth_str) = auth {
+        let (user, pass) = auth_str.split_once(':').unwrap_or((auth_str, ""));
+        config.authentication(tiberius::AuthMethod::sql_server(user, pass));
+    }
+
+    if !database.is_empty() {
+        config.database(database);
+    }
+    config.trust_cert();
+
+    Ok(config)
+}
+
+fn decode_tiberius_cell(row: &tiberius::Row, idx: usize) -> String {
+    if let Ok(Some(s)) = row.try_get::<&str, _>(idx) {
+        return s.to_string();
+    }
+    if let Ok(Some(v)) = row.try_get::<i64, _>(idx) {
+        return v.to_string();
+    }
+    if let Ok(Some(v)) = row.try_get::<i32, _>(idx) {
+        return v.to_string();
+    }
+    if let Ok(Some(v)) = row.try_get::<i16, _>(idx) {
+        return v.to_string();
+    }
+    if let Ok(Some(v)) = row.try_get::<u8, _>(idx) {
+        return v.to_string();
+    }
+    if let Ok(Some(v)) = row.try_get::<f64, _>(idx) {
+        return v.to_string();
+    }
+    if let Ok(Some(v)) = row.try_get::<f32, _>(idx) {
+        return v.to_string();
+    }
+    if let Ok(Some(v)) = row.try_get::<bool, _>(idx) {
+        return v.to_string();
+    }
+    if let Ok(Some(v)) = row.try_get::<&[u8], _>(idx) {
+        return format!("<blob {}b>", v.len());
+    }
+    if let Ok(Some(v)) = row.try_get::<chrono::NaiveDateTime, _>(idx) {
+        return v.to_string();
+    }
+    if let Ok(Some(v)) = row.try_get::<chrono::NaiveDate, _>(idx) {
+        return v.to_string();
+    }
+    if let Ok(Some(v)) = row.try_get::<chrono::NaiveTime, _>(idx) {
+        return v.to_string();
+    }
+    NULL_DISPLAY.to_string()
+}
+
 impl DbClient {
-    pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
-        sqlx::any::install_default_drivers();
-        let normalized = match DbType::from_url(url) {
-            DbType::Sqlite => {
-                if url != ":memory:" && url != "sqlite::memory:" && !url.contains("mode=ro") {
-                    let fs_path = url.strip_prefix("sqlite:").unwrap_or(url);
-                    let fs_path = fs_path.split('?').next().unwrap_or(fs_path);
-                    let path_obj = std::path::Path::new(fs_path);
-                    if let Some(parent) = path_obj.parent()
-                        && !parent.as_os_str().is_empty()
-                    {
-                        let _ = std::fs::create_dir_all(parent);
-                    }
-                    if !path_obj.exists() {
-                        let _ = std::fs::File::create(path_obj);
-                    }
-                }
-                normalize_sqlite_url(url)
+    pub fn pool(&self) -> &AnyPool {
+        match &self.backend {
+            DbBackend::Sqlx(p) => p,
+            _ => panic!("Expected Sqlx pool"),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub async fn close(&self) {
+        if let DbBackend::Sqlx(p) = &self.backend {
+            p.close().await;
+        }
+    }
+
+    pub async fn connect(url: &str) -> Result<Self, DbError> {
+        let db_type = DbType::from_url(url);
+        match db_type {
+            DbType::Mssql => {
+                let config = parse_mssql_url(url).map_err(DbError::Mssql)?;
+                let tcp = TcpStream::connect(config.get_addr()).await.map_err(|e| {
+                    DbError::Mssql(format!(
+                        "Failed to connect to MS SQL at {}: {e}",
+                        config.get_addr()
+                    ))
+                })?;
+                tcp.set_nodelay(true)
+                    .map_err(|e| DbError::Mssql(e.to_string()))?;
+                let client = tiberius::Client::connect(config.clone(), tcp.compat_write())
+                    .await
+                    .map_err(|e| DbError::Mssql(format!("MS SQL login failed: {e}")))?;
+                let mssql_client = Arc::new(Mutex::new(client));
+                Ok(Self {
+                    backend: DbBackend::Mssql {
+                        client: mssql_client,
+                        config: Box::new(config),
+                    },
+                    db_type,
+                })
             }
-            _ => url.to_string(),
-        };
-        let db_type = DbType::from_url(&normalized);
-        let pool = AnyPool::connect(&normalized).await?;
-        Ok(Self { pool, db_type })
+            _ => {
+                sqlx::any::install_default_drivers();
+                let normalized = match db_type {
+                    DbType::Sqlite => {
+                        if url != ":memory:" && url != "sqlite::memory:" && !url.contains("mode=ro")
+                        {
+                            let fs_path = url.strip_prefix("sqlite:").unwrap_or(url);
+                            let fs_path = fs_path.split('?').next().unwrap_or(fs_path);
+                            let path_obj = std::path::Path::new(fs_path);
+                            if let Some(parent) = path_obj.parent()
+                                && !parent.as_os_str().is_empty()
+                            {
+                                let _ = std::fs::create_dir_all(parent);
+                            }
+                            if !path_obj.exists() {
+                                let _ = std::fs::File::create(path_obj);
+                            }
+                        }
+                        normalize_sqlite_url(url)
+                    }
+                    _ => url.to_string(),
+                };
+                let pool = AnyPool::connect(&normalized).await?;
+                Ok(Self {
+                    backend: DbBackend::Sqlx(pool),
+                    db_type,
+                })
+            }
+        }
     }
 
     pub fn identifier_quote(&self) -> char {
         match self.db_type {
             DbType::Mysql => '`',
+            DbType::Mssql => '[',
             _ => '"',
         }
     }
 
     pub fn quote_ident(&self, ident: &str) -> String {
         let quote = self.identifier_quote();
-        let doubled = format!("{quote}{quote}");
-        format!("{quote}{}{quote}", ident.replace(quote, &doubled))
-    }
-
-    pub fn uses_numbered_placeholders(&self) -> bool {
-        self.db_type == DbType::Postgres
-    }
-
-    pub async fn list_databases(&self) -> Result<Vec<String>, sqlx::Error> {
-        let sql = match self.db_type {
-            DbType::Postgres => {
-                "SELECT datname::text FROM pg_database WHERE datistemplate = false ORDER BY datname"
-            }
-            DbType::Mysql => "SHOW DATABASES",
-            DbType::Sqlite => "SELECT 'main'",
-        };
-        let rows = sqlx::query(sql).fetch_all(&self.pool).await?;
-        Ok(rows.iter().map(|r| row_cell(r, 0)).collect())
-    }
-
-    pub async fn list_schemas(&self) -> Result<Vec<String>, sqlx::Error> {
-        match self.db_type {
-            DbType::Postgres => {
-                let sql = "SELECT schema_name::text FROM information_schema.schemata \
-                           WHERE schema_name NOT LIKE 'pg_%' AND schema_name != 'information_schema' \
-                           ORDER BY schema_name";
-                let rows = sqlx::query(sql).fetch_all(&self.pool).await?;
-                Ok(rows.iter().map(|r| row_cell(r, 0)).collect())
-            }
-            _ => Ok(vec![]),
+        if quote == '[' {
+            format!("[{}]", ident.replace(']', "]]"))
+        } else {
+            let doubled = format!("{quote}{quote}");
+            format!("{quote}{}{quote}", ident.replace(quote, &doubled))
         }
     }
 
-    pub async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<TableEntry>, sqlx::Error> {
-        let sql = match self.db_type {
-            DbType::Sqlite => "SELECT name, type FROM sqlite_master \
-                 WHERE type IN ('table', 'view') ORDER BY name"
-                .to_string(),
-            DbType::Postgres => {
-                let schema_name = schema.unwrap_or("public");
-                format!(
-                    "SELECT name, is_view FROM ( \
-                         SELECT tablename::text AS name, false AS is_view \
-                         FROM pg_tables WHERE schemaname = '{schema_name}' \
-                         UNION ALL \
-                         SELECT viewname::text AS name, true AS is_view \
-                         FROM pg_views WHERE schemaname = '{schema_name}' \
-                     ) t ORDER BY name"
-                )
-            }
-            DbType::Mysql => "SELECT table_name, IF(table_type = 'VIEW', 1, 0) \
-                 FROM information_schema.tables WHERE table_schema = DATABASE() \
-                 ORDER BY table_name"
-                .to_string(),
-        };
-        let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
-        Ok(rows
-            .iter()
-            .map(|r| {
-                let is_view = match self.db_type {
-                    DbType::Sqlite => row_cell(r, 1) == "view",
-                    _ => matches!(row_cell(r, 1).as_str(), "1" | "true" | "t"),
+    pub fn uses_numbered_placeholders(&self) -> bool {
+        self.db_type == DbType::Postgres || self.db_type == DbType::Mssql
+    }
+
+    pub fn placeholder(&self, index: usize) -> String {
+        match self.db_type {
+            DbType::Postgres => format!("${index}"),
+            DbType::Mssql => format!("@P{index}"),
+            _ => "?".to_string(),
+        }
+    }
+
+    pub async fn list_databases(&self) -> Result<Vec<String>, DbError> {
+        match &self.backend {
+            DbBackend::Sqlx(pool) => {
+                let sql = match self.db_type {
+                    DbType::Postgres => {
+                        "SELECT datname::text FROM pg_database WHERE datistemplate = false ORDER BY datname"
+                    }
+                    DbType::Mysql => "SHOW DATABASES",
+                    DbType::Sqlite => "SELECT 'main'",
+                    _ => "SELECT 'main'",
                 };
-                TableEntry {
-                    name: row_cell(r, 0),
-                    is_view,
+                let rows = sqlx::query(sql).fetch_all(pool).await?;
+                Ok(rows.iter().map(|r| row_cell(r, 0)).collect())
+            }
+            DbBackend::Mssql { .. } => {
+                let sql = "SELECT name FROM sys.databases WHERE state = 0 AND name NOT IN ('master', 'tempdb', 'model', 'msdb') ORDER BY name";
+                let res = self.execute_query(sql).await?;
+                Ok(res.rows.into_iter().filter_map(|mut r| r.pop()).collect())
+            }
+        }
+    }
+
+    pub async fn list_schemas(&self) -> Result<Vec<String>, DbError> {
+        match &self.backend {
+            DbBackend::Sqlx(pool) => match self.db_type {
+                DbType::Postgres => {
+                    let sql = "SELECT schema_name::text FROM information_schema.schemata \
+                                   WHERE schema_name NOT LIKE 'pg_%' AND schema_name != 'information_schema' \
+                                   ORDER BY schema_name";
+                    let rows = sqlx::query(sql).fetch_all(pool).await?;
+                    Ok(rows.iter().map(|r| row_cell(r, 0)).collect())
                 }
-            })
-            .collect())
+                _ => Ok(vec![]),
+            },
+            DbBackend::Mssql { .. } => {
+                let sql = "SELECT schema_name FROM information_schema.schemata \
+                           WHERE schema_name NOT IN ('guest', 'INFORMATION_SCHEMA', 'sys', 'db_owner', 'db_accessadmin', 'db_securityadmin', 'db_ddladmin', 'db_backupoperator', 'db_datareader', 'db_datawriter', 'db_denydatareader', 'db_denydatawriter') \
+                           ORDER BY schema_name";
+                let res = self.execute_query(sql).await?;
+                Ok(res.rows.into_iter().filter_map(|mut r| r.pop()).collect())
+            }
+        }
+    }
+
+    pub async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<TableEntry>, DbError> {
+        match &self.backend {
+            DbBackend::Sqlx(pool) => {
+                let sql = match self.db_type {
+                    DbType::Sqlite => "SELECT name, type FROM sqlite_master \
+                         WHERE type IN ('table', 'view') ORDER BY name"
+                        .to_string(),
+                    DbType::Postgres => {
+                        let schema_name = schema.unwrap_or("public");
+                        format!(
+                            "SELECT name, is_view FROM ( \
+                                 SELECT tablename::text AS name, false AS is_view \
+                                 FROM pg_tables WHERE schemaname = '{schema_name}' \
+                                 UNION ALL \
+                                 SELECT viewname::text AS name, true AS is_view \
+                                 FROM pg_views WHERE schemaname = '{schema_name}' \
+                             ) t ORDER BY name"
+                        )
+                    }
+                    DbType::Mysql => "SELECT table_name, IF(table_type = 'VIEW', 1, 0) \
+                         FROM information_schema.tables WHERE table_schema = DATABASE() \
+                         ORDER BY table_name"
+                        .to_string(),
+                    _ => return Ok(vec![]),
+                };
+                let rows = sqlx::query(&sql).fetch_all(pool).await?;
+                Ok(rows
+                    .iter()
+                    .map(|r| {
+                        let is_view = match self.db_type {
+                            DbType::Sqlite => row_cell(r, 1) == "view",
+                            _ => matches!(row_cell(r, 1).as_str(), "1" | "true" | "t"),
+                        };
+                        TableEntry {
+                            name: row_cell(r, 0),
+                            is_view,
+                        }
+                    })
+                    .collect())
+            }
+            DbBackend::Mssql { .. } => {
+                let schema_name = schema.unwrap_or("dbo");
+                let sql = format!(
+                    "SELECT table_name, table_type FROM information_schema.tables \
+                     WHERE table_schema = '{}' ORDER BY table_name",
+                    schema_name.replace('\'', "''")
+                );
+                let res = self.execute_query(&sql).await?;
+                Ok(res
+                    .rows
+                    .into_iter()
+                    .map(|r| {
+                        let name = r.first().cloned().unwrap_or_default();
+                        let is_view = r
+                            .get(1)
+                            .map(|t| t.to_lowercase().contains("view"))
+                            .unwrap_or(false);
+                        TableEntry { name, is_view }
+                    })
+                    .collect())
+            }
+        }
     }
 
     pub async fn query_table(
@@ -303,9 +546,30 @@ impl DbClient {
         limit: u32,
         offset: u32,
         sort: Option<(&str, bool)>,
-    ) -> Result<QueryResult, sqlx::Error> {
+    ) -> Result<QueryResult, DbError> {
         match self.db_type {
             DbType::Postgres => self.pg_text_query(schema, table, limit, offset, sort).await,
+            DbType::Mssql => {
+                let s = schema.unwrap_or("dbo");
+                let order_by = sort
+                    .map(|(col, desc)| {
+                        format!(
+                            " ORDER BY [{}] {}",
+                            col.replace(']', "]]"),
+                            if desc { "DESC" } else { "ASC" }
+                        )
+                    })
+                    .unwrap_or_else(|| " ORDER BY (SELECT NULL)".to_string());
+                let sql = format!(
+                    "SELECT * FROM [{}].[{}] {} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
+                    s.replace(']', "]]"),
+                    table.replace(']', "]]"),
+                    order_by,
+                    offset,
+                    limit
+                );
+                self.execute_query(&sql).await
+            }
             _ => {
                 let order_by = sort
                     .map(|(col, desc)| {
@@ -336,7 +600,8 @@ impl DbClient {
         limit: u32,
         offset: u32,
         sort: Option<(&str, bool)>,
-    ) -> Result<QueryResult, sqlx::Error> {
+    ) -> Result<QueryResult, DbError> {
+        let pool = self.pool();
         let schema_name = schema.unwrap_or("public");
         let cols_sql = format!(
             "SELECT column_name::text FROM information_schema.columns \
@@ -344,7 +609,7 @@ impl DbClient {
              ORDER BY ordinal_position",
             schema_name, table
         );
-        let col_rows = sqlx::query(&cols_sql).fetch_all(&self.pool).await?;
+        let col_rows = sqlx::query(&cols_sql).fetch_all(pool).await?;
         if col_rows.is_empty() {
             return Ok(QueryResult {
                 columns: vec![],
@@ -376,7 +641,7 @@ impl DbClient {
             limit,
             offset
         );
-        let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
+        let rows = sqlx::query(&sql).fetch_all(pool).await?;
         let data = rows.iter().map(row_to_strings).collect();
         Ok(QueryResult {
             columns,
@@ -385,20 +650,73 @@ impl DbClient {
         })
     }
 
-    pub async fn execute_query(&self, sql: &str) -> Result<QueryResult, sqlx::Error> {
-        if !Self::is_read_only_sql(sql) {
-            let result = sqlx::query(sql).execute(&self.pool).await?;
-            return Ok(QueryResult {
-                columns: vec![],
-                rows: vec![],
-                rows_affected: result.rows_affected(),
-            });
+    pub async fn execute_query(&self, sql: &str) -> Result<QueryResult, DbError> {
+        match &self.backend {
+            DbBackend::Sqlx(pool) => {
+                if !Self::is_read_only_sql(sql) {
+                    let result = sqlx::query(sql).execute(pool).await?;
+                    return Ok(QueryResult {
+                        columns: vec![],
+                        rows: vec![],
+                        rows_affected: result.rows_affected(),
+                    });
+                }
+
+                let rows = sqlx::query(sql).fetch_all(pool).await?;
+                self.rows_to_query_result(sql, rows, 0)
+                    .await
+                    .map_err(Into::into)
+            }
+            DbBackend::Mssql { client, .. } => {
+                let mut c = client.lock().await;
+                if !Self::is_read_only_sql(sql) {
+                    let res = c
+                        .execute(sql, &[])
+                        .await
+                        .map_err(|e| DbError::Mssql(e.to_string()))?;
+                    return Ok(QueryResult {
+                        columns: vec![],
+                        rows: vec![],
+                        rows_affected: res.total(),
+                    });
+                }
+
+                let stream = c
+                    .simple_query(sql)
+                    .await
+                    .map_err(|e| DbError::Mssql(e.to_string()))?;
+                let rows = stream
+                    .into_first_result()
+                    .await
+                    .map_err(|e| DbError::Mssql(e.to_string()))?;
+                if rows.is_empty() {
+                    return Ok(QueryResult {
+                        columns: vec![],
+                        rows: vec![],
+                        rows_affected: 0,
+                    });
+                }
+                let columns: Vec<String> = rows[0]
+                    .columns()
+                    .iter()
+                    .map(|col| col.name().to_string())
+                    .collect();
+                let data: Vec<Vec<String>> = rows
+                    .iter()
+                    .map(|r| {
+                        (0..r.columns().len())
+                            .map(|i| decode_tiberius_cell(r, i))
+                            .collect()
+                    })
+                    .collect();
+                Ok(QueryResult {
+                    columns,
+                    rows: data,
+                    rows_affected: 0,
+                })
+            }
         }
-
-        let rows = sqlx::query(sql).fetch_all(&self.pool).await?;
-        self.rows_to_query_result(sql, rows, 0).await
     }
-
     async fn rows_to_query_result(
         &self,
         sql: &str,
@@ -436,7 +754,7 @@ impl DbClient {
                 .collect::<Vec<_>>()
                 .join(", ");
             let cast_sql = format!("SELECT {} FROM ({}) __db_eye_q", select, sql);
-            let rows2 = sqlx::query(&cast_sql).fetch_all(&self.pool).await?;
+            let rows2 = sqlx::query(&cast_sql).fetch_all(self.pool()).await?;
             let data = rows2.iter().map(row_to_strings).collect();
             return Ok(QueryResult {
                 columns,
@@ -657,11 +975,11 @@ impl DbClient {
         &self,
         schema: Option<&str>,
         table: &str,
-    ) -> Result<Vec<ColumnInfo>, sqlx::Error> {
+    ) -> Result<Vec<ColumnInfo>, DbError> {
         match self.db_type {
             DbType::Sqlite => {
                 let sql = format!("PRAGMA table_info(\"{}\")", table);
-                let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
+                let rows = sqlx::query(&sql).fetch_all(self.pool()).await?;
                 let mut cols: Vec<ColumnInfo> = rows
                     .iter()
                     .map(|r| {
@@ -689,7 +1007,7 @@ impl DbClient {
                 // PRAGMA foreign_key_list: id, seq, table, from, to, ...
                 let fk_sql = format!("PRAGMA foreign_key_list(\"{}\")", table);
                 let fk_rows = sqlx::query(&fk_sql)
-                    .fetch_all(&self.pool)
+                    .fetch_all(self.pool())
                     .await
                     .unwrap_or_default();
                 for fk_row in &fk_rows {
@@ -732,7 +1050,7 @@ impl DbClient {
                      WHERE c.table_name = '{}' AND c.table_schema = '{}' ORDER BY c.ordinal_position",
                     table, schema_name, table, schema_name
                 );
-                let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
+                let rows = sqlx::query(&sql).fetch_all(self.pool()).await?;
                 let mut cols: Vec<ColumnInfo> = rows
                     .iter()
                     .map(|r| {
@@ -772,7 +1090,7 @@ impl DbClient {
                     schema_name, table
                 );
                 let fk_rows = sqlx::query(&fk_sql)
-                    .fetch_all(&self.pool)
+                    .fetch_all(self.pool())
                     .await
                     .unwrap_or_default();
                 for fk_row in &fk_rows {
@@ -805,7 +1123,7 @@ impl DbClient {
                      ORDER BY c.ordinal_position",
                     table
                 );
-                let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
+                let rows = sqlx::query(&sql).fetch_all(self.pool()).await?;
                 let mut cols: Vec<ColumnInfo> = rows
                     .iter()
                     .map(|r| {
@@ -840,7 +1158,7 @@ impl DbClient {
                     table
                 );
                 let fk_rows = sqlx::query(&fk_sql)
-                    .fetch_all(&self.pool)
+                    .fetch_all(self.pool())
                     .await
                     .unwrap_or_default();
                 for fk_row in &fk_rows {
@@ -854,6 +1172,91 @@ impl DbClient {
                 }
                 Ok(cols)
             }
+            DbType::Mssql => {
+                let s = schema.unwrap_or("dbo");
+                let sql = format!(
+                    "SELECT c.column_name, c.data_type, \
+                     CASE WHEN pk.column_name IS NOT NULL THEN '1' ELSE '0' END, \
+                     COALESCE(CAST(pk.ordinal_position AS VARCHAR), '0'), \
+                     c.is_nullable, COALESCE(c.column_default, ''), \
+                     COALESCE(CAST(c.character_maximum_length AS VARCHAR), ''), \
+                     COALESCE(CAST(c.numeric_precision AS VARCHAR), ''), \
+                     COALESCE(CAST(c.numeric_scale AS VARCHAR), ''), \
+                     COALESCE(CAST(c.numeric_precision_radix AS VARCHAR), '') \
+                     FROM information_schema.columns c \
+                     LEFT JOIN ( \
+                         SELECT tc.table_schema, tc.table_name, kcu.column_name, kcu.ordinal_position \
+                         FROM information_schema.table_constraints tc \
+                         JOIN information_schema.key_column_usage kcu \
+                           ON tc.constraint_name = kcu.constraint_name \
+                          AND tc.table_schema = kcu.table_schema \
+                          AND tc.table_name = kcu.table_name \
+                         WHERE tc.constraint_type = 'PRIMARY KEY' \
+                     ) pk ON c.table_schema = kcu.table_schema \
+                          AND c.table_name = kcu.table_name \
+                          AND c.column_name = kcu.column_name \
+                     WHERE c.table_schema = '{s}' AND c.table_name = '{table}' \
+                     ORDER BY c.ordinal_position"
+                );
+                let res = self.execute_query(&sql).await?;
+                let mut cols: Vec<ColumnInfo> = res
+                    .rows
+                    .iter()
+                    .map(|r| {
+                        let name = r.first().cloned().unwrap_or_default();
+                        let raw_type = r.get(1).cloned().unwrap_or_default();
+                        let is_pk = r.get(2).map(|v| v == "1").unwrap_or(false);
+                        let pk_order = r.get(3).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+                        let is_nullable = r.get(4).map(|v| v == "YES").unwrap_or(true);
+                        let dflt = r
+                            .get(5)
+                            .cloned()
+                            .filter(|v| !v.is_empty() && v != NULL_DISPLAY);
+                        let char_len = r.get(6).cloned().unwrap_or_default();
+                        let num_prec = r.get(7).cloned().unwrap_or_default();
+                        let num_scale = r.get(8).cloned().unwrap_or_default();
+                        let num_radix = r.get(9).cloned().unwrap_or_default();
+                        ColumnInfo {
+                            name,
+                            data_type: format_precise_type(
+                                &raw_type, &char_len, &num_prec, &num_scale, &num_radix,
+                            ),
+                            is_pk,
+                            pk_order,
+                            fk_table: None,
+                            fk_column: None,
+                            is_nullable,
+                            default_value: dflt,
+                        }
+                    })
+                    .collect();
+
+                let fk_sql = format!(
+                    "SELECT kcu.column_name, ccu.table_name, ccu.column_name \
+                     FROM information_schema.key_column_usage kcu \
+                     JOIN information_schema.referential_constraints rc \
+                       ON kcu.constraint_name = rc.constraint_name \
+                      AND kcu.constraint_schema = rc.constraint_schema \
+                     JOIN information_schema.constraint_column_usage ccu \
+                       ON rc.unique_constraint_name = ccu.constraint_name \
+                      AND rc.unique_constraint_schema = ccu.constraint_schema \
+                     WHERE kcu.table_schema = '{}' AND kcu.table_name = '{}'",
+                    s.replace('\'', "''"),
+                    table.replace('\'', "''")
+                );
+                if let Ok(fk_res) = self.execute_query(&fk_sql).await {
+                    for r in fk_res.rows {
+                        if let (Some(from_col), Some(to_table), Some(to_col)) =
+                            (r.first(), r.get(1), r.get(2))
+                            && let Some(col) = cols.iter_mut().find(|c| &c.name == from_col)
+                        {
+                            col.fk_table = Some(to_table.clone());
+                            col.fk_column = Some(to_col.clone());
+                        }
+                    }
+                }
+                Ok(cols)
+            }
         }
     }
 
@@ -862,7 +1265,7 @@ impl DbClient {
         schema: Option<&str>,
         ref_table: &str,
         ref_column: &str,
-    ) -> Result<Vec<String>, sqlx::Error> {
+    ) -> Result<Vec<String>, DbError> {
         let sql = match self.db_type {
             DbType::Postgres => {
                 let schema_name = schema.unwrap_or("public");
@@ -873,45 +1276,85 @@ impl DbClient {
                     self.quote_ident(ref_table)
                 )
             }
+            DbType::Mssql => {
+                let s = schema.unwrap_or("dbo");
+                format!(
+                    "SELECT TOP 50 [{}] FROM [{}].[{}] WHERE [{}] IS NOT NULL ORDER BY [{}]",
+                    ref_column.replace(']', "]]"),
+                    s.replace(']', "]]"),
+                    ref_table.replace(']', "]]"),
+                    ref_column.replace(']', "]]"),
+                    ref_column.replace(']', "]]")
+                )
+            }
             _ => format!(
                 "SELECT DISTINCT {} FROM {} ORDER BY 1 LIMIT 50",
                 self.quote_ident(ref_column),
                 self.quote_ident(ref_table)
             ),
         };
-        let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
-        Ok(rows.iter().map(|r| row_cell(r, 0)).collect())
+        match &self.backend {
+            DbBackend::Sqlx(pool) => {
+                let rows = sqlx::query(&sql).fetch_all(pool).await?;
+                Ok(rows.iter().map(|r| row_cell(r, 0)).collect())
+            }
+            DbBackend::Mssql { .. } => {
+                let res = self.execute_query(&sql).await?;
+                Ok(res.rows.into_iter().filter_map(|mut r| r.pop()).collect())
+            }
+        }
     }
 
     pub async fn execute_write_with_values(
         &self,
         sql: &str,
         values: &[Option<String>],
-    ) -> Result<u64, sqlx::Error> {
-        let mut query = sqlx::query(sql);
-        for value in values {
-            query = query.bind(value.clone());
+    ) -> Result<u64, DbError> {
+        match &self.backend {
+            DbBackend::Sqlx(pool) => {
+                let mut query = sqlx::query(sql);
+                for value in values {
+                    query = query.bind(value.clone());
+                }
+                let result = query.execute(pool).await?;
+                Ok(result.rows_affected())
+            }
+            DbBackend::Mssql { client, .. } => {
+                let mut c = client.lock().await;
+                let mut params: Vec<Box<dyn tiberius::ToSql>> = Vec::new();
+                for val in values {
+                    match val {
+                        Some(v) => params.push(Box::new(v.clone())),
+                        None => params.push(Box::new(Option::<String>::None)),
+                    }
+                }
+                let param_refs: Vec<&dyn tiberius::ToSql> =
+                    params.iter().map(|p| p.as_ref()).collect();
+                let res = c
+                    .execute(sql, &param_refs)
+                    .await
+                    .map_err(|e| DbError::Mssql(e.to_string()))?;
+                Ok(res.total())
+            }
         }
-        let result = query.execute(&self.pool).await?;
-        Ok(result.rows_affected())
     }
 
     pub async fn table_stats(
         &self,
         schema: Option<&str>,
         table: &str,
-    ) -> Result<TableStats, sqlx::Error> {
+    ) -> Result<TableStats, DbError> {
         match self.db_type {
             DbType::Sqlite => {
                 let sql = format!("PRAGMA index_list(\"{}\")", table);
-                let idx_rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
+                let idx_rows = sqlx::query(&sql).fetch_all(self.pool()).await?;
                 let mut indexes = Vec::new();
                 for idx_row in &idx_rows {
                     let name = row_cell(idx_row, 1);
                     let unique = row_cell(idx_row, 2) == "1";
                     let cols_sql = format!("PRAGMA index_info(\"{}\")", name);
                     let col_rows = sqlx::query(&cols_sql)
-                        .fetch_all(&self.pool)
+                        .fetch_all(self.pool())
                         .await
                         .unwrap_or_default();
                     let cols: Vec<String> = col_rows.iter().map(|r| row_cell(r, 2)).collect();
@@ -929,7 +1372,7 @@ impl DbClient {
                     "SELECT indexname::text, indexdef::text FROM pg_indexes \
                      WHERE schemaname = '{schema_name}' AND tablename = '{table}'"
                 );
-                let idx_rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
+                let idx_rows = sqlx::query(&sql).fetch_all(self.pool()).await?;
                 let indexes = idx_rows
                     .iter()
                     .map(|r| {
@@ -948,7 +1391,7 @@ impl DbClient {
                     self.quote_ident(table)
                 );
                 let size_label = sqlx::query(&size_sql)
-                    .fetch_one(&self.pool)
+                    .fetch_one(self.pool())
                     .await
                     .ok()
                     .map(|r| row_cell(&r, 0));
@@ -964,7 +1407,7 @@ impl DbClient {
                      WHERE table_schema = DATABASE() AND table_name = '{table}' \
                      GROUP BY index_name, non_unique"
                 );
-                let idx_rows = sqlx::query(&idx_sql).fetch_all(&self.pool).await?;
+                let idx_rows = sqlx::query(&idx_sql).fetch_all(self.pool()).await?;
                 let indexes = idx_rows
                     .iter()
                     .map(|r| {
@@ -980,7 +1423,7 @@ impl DbClient {
                      WHERE table_schema = DATABASE() AND table_name = '{table}'"
                 );
                 let size_label = sqlx::query(&size_sql)
-                    .fetch_one(&self.pool)
+                    .fetch_one(self.pool())
                     .await
                     .ok()
                     .and_then(|r| row_cell(&r, 0).parse::<i64>().ok())
@@ -990,10 +1433,42 @@ impl DbClient {
                     size_label,
                 })
             }
+            DbType::Mssql => {
+                let s = schema.unwrap_or("dbo");
+                let idx_sql = format!(
+                    "SELECT i.name, i.is_unique, c.name FROM sys.indexes i \
+                     JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id \
+                     JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id \
+                     WHERE i.object_id = OBJECT_ID('[{s}].[{table}]') AND i.name IS NOT NULL \
+                     ORDER BY i.name, ic.key_ordinal"
+                );
+                let idx_res = self.execute_query(&idx_sql).await.unwrap_or(QueryResult {
+                    columns: vec![],
+                    rows: vec![],
+                    rows_affected: 0,
+                });
+                let mut indexes = Vec::new();
+                for row in idx_res.rows {
+                    if let (Some(name), Some(unique), Some(col)) =
+                        (row.first(), row.get(1), row.get(2))
+                    {
+                        let uniq_str = if unique == "1" || unique == "true" {
+                            "UNIQUE "
+                        } else {
+                            ""
+                        };
+                        indexes.push(format!("{uniq_str}{name} ({col})"));
+                    }
+                }
+                Ok(TableStats {
+                    indexes,
+                    size_label: None,
+                })
+            }
         }
     }
 
-    pub async fn count_rows(&self, schema: Option<&str>, table: &str) -> Result<i64, sqlx::Error> {
+    pub async fn count_rows(&self, schema: Option<&str>, table: &str) -> Result<i64, DbError> {
         let sql = match self.db_type {
             DbType::Postgres => {
                 let schema_name = schema.unwrap_or("public");
@@ -1003,13 +1478,38 @@ impl DbClient {
                     self.quote_ident(table)
                 )
             }
+            DbType::Mssql => {
+                let s = schema.unwrap_or("dbo");
+                format!(
+                    "SELECT COUNT(*) FROM [{}].[{}]",
+                    s.replace(']', "]]"),
+                    table.replace(']', "]]")
+                )
+            }
             _ => format!("SELECT COUNT(*) FROM {}", self.quote_ident(table)),
         };
-        let row = sqlx::query(&sql).fetch_one(&self.pool).await?;
-        row.try_get::<String, _>(0)
-            .map(|s| s.parse::<i64>().unwrap_or(0))
-            .or_else(|_| row.try_get::<i64, _>(0))
-            .or_else(|_| row.try_get::<i32, _>(0).map(|v| v as i64))
+        match &self.backend {
+            DbBackend::Sqlx(pool) => {
+                let row = sqlx::query(&sql).fetch_one(pool).await?;
+                let count = row
+                    .try_get::<String, _>(0)
+                    .map(|s| s.parse::<i64>().unwrap_or(0))
+                    .or_else(|_| row.try_get::<i64, _>(0))
+                    .or_else(|_| row.try_get::<i32, _>(0).map(|v| v as i64))
+                    .unwrap_or(0);
+                Ok(count)
+            }
+            DbBackend::Mssql { .. } => {
+                let res = self.execute_query(&sql).await?;
+                let count = res
+                    .rows
+                    .first()
+                    .and_then(|r| r.first())
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .unwrap_or(0);
+                Ok(count)
+            }
+        }
     }
 }
 
@@ -1286,7 +1786,7 @@ mod tests {
         std::fs::File::create(&path).unwrap();
         let db = DbClient::connect(path.to_str().unwrap()).await.unwrap();
         sqlx::query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)")
-            .execute(&db.pool)
+            .execute(db.pool())
             .await
             .unwrap();
 
@@ -1307,7 +1807,7 @@ mod tests {
             result.rows,
             vec![vec!["Ada's".to_string(), NULL_DISPLAY.to_string()]]
         );
-        db.pool.close().await;
+        db.close().await;
         let _ = std::fs::remove_file(path);
     }
 
@@ -1342,7 +1842,7 @@ mod tests {
 
         let db = DbClient::connect(path.to_str().unwrap()).await.unwrap();
         assert!(path.exists());
-        db.pool.close().await;
+        db.close().await;
         let _ = std::fs::remove_file(&path);
     }
 
@@ -1465,28 +1965,46 @@ mod tests {
             code: Some("23505"),
             message: "Key (id)=(1) already exists",
         }));
-        let formatted = format_db_error("Insert", &err);
+        let formatted = format_db_error("Insert", &err.into());
         assert!(formatted.contains("duplicate value violates a unique constraint"));
 
         let err_table = sqlx::Error::Database(Box::new(MockDbError {
             code: Some("42P01"),
             message: "relation \"users\" does not exist",
         }));
-        let formatted_table = format_db_error("Query", &err_table);
+        let formatted_table = format_db_error("Query", &err_table.into());
         assert!(formatted_table.contains("table or database object not found"));
 
         let err_mysql = sqlx::Error::Database(Box::new(MockDbError {
             code: Some("1062"),
             message: "Duplicate entry '1' for key 'PRIMARY'",
         }));
-        let formatted_mysql = format_db_error("Insert", &err_mysql);
+        let formatted_mysql = format_db_error("Insert", &err_mysql.into());
         assert!(formatted_mysql.contains("duplicate value violates a unique constraint"));
 
         let err_sqlite_ro = sqlx::Error::Database(Box::new(MockDbError {
             code: Some("8"),
             message: "attempt to write a readonly database",
         }));
-        let formatted_ro = format_db_error("Update", &err_sqlite_ro);
+        let formatted_ro = format_db_error("Update", &err_sqlite_ro.into());
         assert!(formatted_ro.contains("permission denied or database is read-only"));
+    }
+
+    #[test]
+    fn test_parse_mssql_url() {
+        let conf = parse_mssql_url("mssql://sa:SecretPass123@localhost:1433/mydb").unwrap();
+        assert_eq!(conf.get_addr(), "localhost:1433");
+
+        let conf2 = parse_mssql_url("sqlserver://sa:SecretPass123@10.0.0.5:1433").unwrap();
+        assert_eq!(conf2.get_addr(), "10.0.0.5:1433");
+
+        let conf3 = parse_mssql_url("localhost:1433").unwrap();
+        assert_eq!(conf3.get_addr(), "localhost:1433");
+    }
+
+    #[test]
+    fn test_mssql_type_and_quoting() {
+        assert_eq!(DbType::from_url("mssql://localhost"), DbType::Mssql);
+        assert_eq!(DbType::from_url("sqlserver://localhost"), DbType::Mssql);
     }
 }
