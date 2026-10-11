@@ -196,15 +196,15 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 - Required and default-value indicators on insert/update form fields
 - Table stats popup (`s`): index list and approximate on-disk size
 
+## Versioning
+
+DB-Eye adheres to [Semantic Versioning 2.0.0](https://semver.org/):
+- **MAJOR** (`X.0.0`): Incompatible changes or breaking CLI/config updates.
+- **MINOR** (`0.X.0`): New backward-compatible features, database support, or shortcuts.
+- **PATCH** (`0.0.X`): Bug fixes, security patches, and minor UI refinements.
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes and full versioning guidelines.
+
 ## License
 
 [MIT](LICENSE)
-
-## Development Docs
-
-- `PRD.md` — production roadmap and v1.0 acceptance criteria
-- `CHANGELOG.md` — release notes and known limitations
-- `docs/BRANDKIT.md` — brand guidelines, ANSI color maps, and ASCII art
-- `docs/DEVELOPMENT.md` — development workflow and definition of done
-- `docs/DEVLOG.md` — chronological development notes
-- `docs/templates/` — feature spec and release checklist templates

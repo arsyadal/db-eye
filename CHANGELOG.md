@@ -2,12 +2,59 @@
 
 Semua perubahan penting DB-Eye dicatat di file ini.
 
-Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti Semantic Versioning sebisa mungkin.
+Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti Semantic Versioning ([SemVer 2.0.0](https://semver.org/lang/id/)).
+
+### Aturan Penomoran Versi (SemVer Guidelines)
+
+Format rilis menggunakan struktur **MAJOR.MINOR.PATCH**:
+
+- **MAJOR (`X.0.0`)** — Naikkan ketika ada perubahan besar yang tidak kompatibel ke belakang (*breaking changes*):
+  - Perubahan format argumen/flag CLI yang menghapus atau mengubah opsi lama.
+  - Perubahan skema file konfigurasi, riwayat query, atau koneksi tersimpan yang tidak dapat dibaca oleh versi sebelumnya.
+  - Perombakan arsitektur besar yang mengubah alur kerja utama aplikasi.
+
+- **MINOR (`0.X.0`)** — Naikkan ketika ada penambahan fitur baru yang tetap kompatibel ke belakang (*backward-compatible*):
+  - Penambahan fitur, dialog, atau screen baru (misal: export/import, persistence, auto-refresh schema).
+  - Penambahan dukungan driver database atau tipe data baru.
+  - Penambahan shortcut keyboard baru tanpa mematahkan navigasi yang sudah ada.
+  - Peningkatan fungsionalitas tanpa merusak backward compatibility.
+
+- **PATCH (`0.0.X`)** — Naikkan ketika hanya ada perbaikan bug atau penyesuaian kecil:
+  - Perbaikan bug (*bugfixes*) atau penanganan crash/edge-cases.
+  - Patch keamanan (*security fixes*).
+  - Perbaikan typo, styling warna, atau perbaikan label antarmuka (UI).
+  - Optimasi internal dan refactor kode tanpa mengubah fungsi publik.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-11
+
 ### Added
 
+- SQLite Auto-Creation & Read-Only Connection Flags:
+  - Otomatis membuat database file SQLite baru bila belum ada via normalisasi URL `?mode=rwc`.
+  - Mode read-only (`-r` / `--read-only`) menerapkan `mode=ro` di level connection string untuk hardware/engine-level rejection terhadap operasi write.
+  - Status help connect menampilkan `(SQLite creates file if missing)`.
+- Token-Level Read-Only SQL Scanner:
+  - Scanner multi-pass yang menghapus komentar SQL (`--`, `/* */`), string literal (`'...'`), dan identifier (`"..."`, ``` `...` ```).
+  - Memblokir data-modifying CTEs (`WITH ins AS (INSERT ...) SELECT ...`), multi-statement injection (`SELECT 1; DROP TABLE ...;`), `SELECT ... INTO`, dan mutating pragmas (`PRAGMA ... = ...`).
+  - Mengizinkan inspection pragmas (`PRAGMA table_info(...)`).
+- Exact Type Mapping & Decimal Separation:
+  - Pemisahan tipe data desimal (`decimal`, `numeric`, `dec`, `fixed`) dari float murni (`real`, `double`, `float`).
+  - Menghindari kesalahan pencocokan substring `.contains("int")` pada custom types/enums (`point`, `international_code`, `interval`).
+  - Validasi input desimal dengan presisi tinggi tanpa konversi atau casting lossy ke `f64`.
+  - Menghapus pemotongan desimal `{:.4}` pada pembacaan baris tabel, menampilkan nilai natural.
+- Driver Error Code & SQLSTATE Classification:
+  - Pemetaan kode error native driver (PostgreSQL SQLSTATE, MySQL error codes, SQLite extended result codes) sebelum fallback ke string matching.
+- Non-Nested Row Decoding:
+  - Ekstraksi helper flat `decode_any_cell` menggantikan closure bertingkat 6–7 level pada decoding row cell.
+- Persistent Query History:
+  - Riwayat query SQL otomatis disimpan dan dimuat antar sesi via file `~/.config/db-eye/history.json` (max 100 query).
+- UX & Discoverability Enhancements:
+  - Navigasi kursor teks pada query editor (`Left`, `Right`, `Home`, `End`, `Delete`, `Backspace`, char insertion mid-string).
+  - Schema auto-refresh: panel tabel langsung diperbarui setelah eksekusi DDL (`CREATE TABLE`, dll).
+  - Shortcut SQL query editor diubah dari `::SQL query` menjadi `: (SQL query)` agar mudah ditemukan.
+  - Shortcut editor dan history dipindahkan ke bagian atas `General` pada popup bantuan (`?`).
 - Export and Import UI & Options:
   - Form dialog ekspor via `v` dengan opsi format (CSV, JSON, SQL INSERT).
   - Opsi delimiter dan header untuk ekspor CSV, serta penamaan file otomatis/kustom.

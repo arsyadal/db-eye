@@ -5,3 +5,10 @@
 CLAUDE.md
 .env
 .rtk/
+
+# Internal development docs
+PRD.md
+docs/BRANDKIT.md
+docs/DEVELOPMENT.md
+docs/DEVLOG.md
+docs/templates/

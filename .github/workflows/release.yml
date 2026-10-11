@@ -1,0 +1,128 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build (e.g. v0.3.0)'
+        required: true
+        default: 'v0.3.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            bin_name: db-eye
+            archive_ext: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            bin_name: db-eye
+            archive_ext: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-13
+            bin_name: db-eye
+            archive_ext: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            bin_name: db-eye.exe
+            archive_ext: zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package release artifact (Unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "master" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          ARCHIVE_NAME="db-eye-${TAG}-${{ matrix.target }}.${{ matrix.archive_ext }}"
+          cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} .
+          tar -czf "${ARCHIVE_NAME}" ${{ matrix.bin_name }} README.md LICENSE CHANGELOG.md
+          shasum -a 256 "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+          mkdir -p artifacts
+          mv "${ARCHIVE_NAME}" "${ARCHIVE_NAME}.sha256" artifacts/
+
+      - name: Package release artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "master" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          ARCHIVE_NAME="db-eye-${TAG}-${{ matrix.target }}.${{ matrix.archive_ext }}"
+          cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} .
+          7z a "${ARCHIVE_NAME}" ${{ matrix.bin_name }} README.md LICENSE CHANGELOG.md
+          certutil -hashfile "${ARCHIVE_NAME}" SHA256 | grep -v "hash" | grep -v "CertUtil" | tr -d ' \r\n' > "${ARCHIVE_NAME}.sha256"
+          echo "  ${ARCHIVE_NAME}" >> "${ARCHIVE_NAME}.sha256"
+          mkdir -p artifacts
+          mv "${ARCHIVE_NAME}" "${ARCHIVE_NAME}.sha256" artifacts/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-eye-${{ matrix.target }}
+          path: artifacts/*
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Extract release tag
+        id: release_tag
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "master" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: db-eye ${{ steps.release_tag.outputs.tag }}
+          files: release-artifacts/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
