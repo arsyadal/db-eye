@@ -110,36 +110,58 @@ pub(crate) fn classify_db_code(code: &str) -> Option<&'static str> {
     }
 }
 
+const MESSAGE_PATTERNS: &[(&[&str], &str)] = &[
+    (
+        &["foreign key"],
+        "foreign key constraint failed; check referenced rows first",
+    ),
+    (
+        &["unique", "duplicate", "1062"],
+        "duplicate value violates a unique constraint",
+    ),
+    (
+        &["not null", "cannot be null"],
+        "required field cannot be NULL",
+    ),
+    (
+        &[
+            "permission denied",
+            "access denied",
+            "readonly",
+            "read-only",
+            "attempt to write a readonly database",
+        ],
+        "permission denied or database is read-only",
+    ),
+    (
+        &["syntax error", "sql syntax"],
+        "SQL syntax error; check the query text",
+    ),
+    (
+        &[
+            "no such table",
+            "doesn't exist",
+            "does not exist",
+            "unknown table",
+        ],
+        "table or database object not found",
+    ),
+    (&["no such column", "unknown column"], "column not found"),
+    (
+        &["connection refused", "could not connect"],
+        "could not connect to database server",
+    ),
+];
+
 fn classify_db_message(prefix: &str, message: &str) -> String {
     let lower = message.to_lowercase();
-    let friendly = if lower.contains("foreign key") {
-        Some("foreign key constraint failed; check referenced rows first")
-    } else if lower.contains("unique") || lower.contains("duplicate") || lower.contains("1062") {
-        Some("duplicate value violates a unique constraint")
-    } else if lower.contains("not null") || lower.contains("cannot be null") {
-        Some("required field cannot be NULL")
-    } else if lower.contains("permission denied")
-        || lower.contains("access denied")
-        || lower.contains("readonly")
-        || lower.contains("read-only")
-        || lower.contains("attempt to write a readonly database")
-    {
-        Some("permission denied or database is read-only")
-    } else if lower.contains("syntax error") || lower.contains("sql syntax") {
-        Some("SQL syntax error; check the query text")
-    } else if lower.contains("no such table")
-        || lower.contains("doesn't exist")
-        || lower.contains("does not exist")
-        || lower.contains("unknown table")
-    {
-        Some("table or database object not found")
-    } else if lower.contains("no such column") || lower.contains("unknown column") {
-        Some("column not found")
-    } else if lower.contains("connection refused") || lower.contains("could not connect") {
-        Some("could not connect to database server")
-    } else {
-        None
-    };
+    let friendly = MESSAGE_PATTERNS.iter().find_map(|(patterns, summary)| {
+        if patterns.iter().any(|p| lower.contains(p)) {
+            Some(*summary)
+        } else {
+            None
+        }
+    });
 
     match friendly {
         Some(summary) => format!("{prefix}: {summary} ({message})"),

@@ -154,19 +154,29 @@ fn draw_connect_sqlite(f: &mut Frame, app: &App, area: Rect) {
         .margin(2)
         .split(area);
 
-    f.render_widget(
-        Paragraph::new(vec![
-            Line::from(Span::styled(
-                "DB-EYE",
-                Style::default().add_modifier(Modifier::BOLD),
-            )),
-            Line::from(Span::styled(
-                "Database Browser",
+    let mut title_lines = vec![
+        Line::from(vec![
+            Span::styled("DB-EYE", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" "),
+            Span::styled(
+                format!("v{}", env!("CARGO_PKG_VERSION")),
                 Style::default().fg(Color::DarkGray),
-            )),
+            ),
         ]),
-        chunks[1],
-    );
+        Line::from(Span::styled(
+            "Database Browser",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+    if let Some(update) = &app.update_notice {
+        title_lines.push(Line::from(Span::styled(
+            format!("✨ Update available: {update} (run: db-eye update)"),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )));
+    }
+    f.render_widget(Paragraph::new(title_lines), chunks[1]);
     f.render_widget(db_type_selector(app), chunks[2]);
     f.render_widget(
         Paragraph::new(app.sqlite_input.as_str())
@@ -212,19 +222,29 @@ fn draw_connect_server(f: &mut Frame, app: &App, area: Rect) {
         .margin(2)
         .split(area);
 
-    f.render_widget(
-        Paragraph::new(vec![
-            Line::from(Span::styled(
-                "DB-EYE",
-                Style::default().add_modifier(Modifier::BOLD),
-            )),
-            Line::from(Span::styled(
-                "Database Browser",
+    let mut title_lines = vec![
+        Line::from(vec![
+            Span::styled("DB-EYE", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" "),
+            Span::styled(
+                format!("v{}", env!("CARGO_PKG_VERSION")),
                 Style::default().fg(Color::DarkGray),
-            )),
+            ),
         ]),
-        chunks[1],
-    );
+        Line::from(Span::styled(
+            "Database Browser",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+    if let Some(update) = &app.update_notice {
+        title_lines.push(Line::from(Span::styled(
+            format!("✨ Update available: {update} (run: db-eye update)"),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )));
+    }
+    f.render_widget(Paragraph::new(title_lines), chunks[1]);
     f.render_widget(db_type_selector(app), chunks[2]);
 
     let labels = ConnectForm::labels();

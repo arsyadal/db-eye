@@ -78,6 +78,8 @@ pub struct App {
     pub named_queries: Vec<NamedQuery>,
     pub save_query_input: String,
     pub named_query_index: usize,
+    pub update_notice: Option<String>,
+    pub update_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
 }
 
 impl App {
@@ -87,6 +89,13 @@ impl App {
         } else {
             "←/→: switch DB type  Enter: connect  Ctrl+C: quit"
         };
+        let (update_tx, update_rx) = tokio::sync::mpsc::unbounded_channel();
+        crate::update::spawn_background_update_check(update_tx);
+        let cached_update = crate::update::load_update_cache()
+            .filter(|c| {
+                crate::update::is_newer_version(&c.latest_version, env!("CARGO_PKG_VERSION"))
+            })
+            .map(|c| c.latest_version);
         let mut app = Self {
             screen: Screen::Connect,
             focus: Focus::Tables,
@@ -118,6 +127,8 @@ impl App {
             named_queries: vec![],
             save_query_input: String::new(),
             named_query_index: 0,
+            update_notice: cached_update,
+            update_rx: Some(update_rx),
         };
         app.load_saved_connections();
         app.load_named_queries();
@@ -145,6 +156,11 @@ impl App {
         <B as Backend>::Error: 'static,
     {
         loop {
+            if let Some(rx) = &mut self.update_rx
+                && let Ok(new_ver) = rx.try_recv()
+            {
+                self.update_notice = Some(new_ver);
+            }
             terminal.draw(|f| ui::draw(f, self))?;
             if event::poll(Duration::from_millis(200))?
                 && let Event::Key(key) = event::read()?

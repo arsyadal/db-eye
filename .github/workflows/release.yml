@@ -69,6 +69,7 @@ jobs:
           tar -czf "${ARCHIVE_NAME}" ${{ matrix.bin_name }} README.md LICENSE CHANGELOG.md
           shasum -a 256 "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
           mkdir -p artifacts
+          cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} artifacts/db-eye-${{ matrix.target }}
           mv "${ARCHIVE_NAME}" "${ARCHIVE_NAME}.sha256" artifacts/
 
       - name: Package release artifact (Windows)
@@ -85,6 +86,7 @@ jobs:
           certutil -hashfile "${ARCHIVE_NAME}" SHA256 | grep -v "hash" | grep -v "CertUtil" | tr -d ' \r\n' > "${ARCHIVE_NAME}.sha256"
           echo "  ${ARCHIVE_NAME}" >> "${ARCHIVE_NAME}.sha256"
           mkdir -p artifacts
+          cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} artifacts/db-eye-${{ matrix.target }}.exe
           mv "${ARCHIVE_NAME}" "${ARCHIVE_NAME}.sha256" artifacts/
 
       - name: Upload artifact
