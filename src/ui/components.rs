@@ -100,12 +100,10 @@ pub fn format_status_to_spans<'a>(status: &'a str) -> Line<'a> {
         return Line::from(vec![
             Span::styled(
                 " ✖ ",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED),
             ),
-            Span::styled(
-                status,
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            ),
+            Span::raw(" "),
+            Span::styled(status, Style::default().add_modifier(Modifier::BOLD)),
         ]);
     }
 
@@ -127,17 +125,12 @@ pub fn format_status_to_spans<'a>(status: &'a str) -> Line<'a> {
         if p == "READ-ONLY" {
             spans.push(Span::styled(
                 " READ-ONLY ",
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Red)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED),
             ));
         } else if let Some(conn) = p.strip_prefix("Connected:") {
             spans.push(Span::styled(
                 format!("● Connected:{}", conn),
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().add_modifier(Modifier::BOLD),
             ));
         } else if p == ": (SQL query)"
             || p == ":: (SQL query)"
@@ -146,10 +139,7 @@ pub fn format_status_to_spans<'a>(status: &'a str) -> Line<'a> {
         {
             spans.push(Span::styled(
                 " [:] ",
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED),
             ));
             spans.push(Span::raw(" "));
             spans.push(Span::styled("SQL query", Style::default()));
@@ -159,18 +149,12 @@ pub fn format_status_to_spans<'a>(status: &'a str) -> Line<'a> {
             if key.is_empty() {
                 spans.push(Span::styled(
                     " [:] ",
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED),
                 ));
             } else {
                 spans.push(Span::styled(
                     format!(" [{key}] "),
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED),
                 ));
             }
             if !desc.is_empty() {

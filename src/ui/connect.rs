@@ -86,10 +86,8 @@ fn draw_connect_sqlite(f: &mut Frame, app: &App, area: Rect) {
     ];
     if let Some(update) = &app.update_notice {
         title_lines.push(Line::from(Span::styled(
-            format!("✨ Update available: {update} (run: db-eye update)"),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+            format!(" Update available: {update} (run: db-eye update) "),
+            Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED),
         )));
     }
     f.render_widget(Paragraph::new(title_lines), chunks[1]);
@@ -155,10 +153,8 @@ fn draw_connect_server(f: &mut Frame, app: &App, area: Rect) {
     ];
     if let Some(update) = &app.update_notice {
         title_lines.push(Line::from(Span::styled(
-            format!("✨ Update available: {update} (run: db-eye update)"),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+            format!(" Update available: {update} (run: db-eye update) "),
+            Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED),
         )));
     }
     f.render_widget(Paragraph::new(title_lines), chunks[1]);

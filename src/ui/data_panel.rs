@@ -84,7 +84,7 @@ pub fn draw_data_panel(f: &mut Frame, app: &App, area: Rect) {
                     if i == tab.selected_row && j == tab.col_offset && focused {
                         if let Some((edit_r, edit_c)) = tab.editing_cell {
                             if i == edit_r && j == edit_c {
-                                style = style.bg(Color::Yellow).fg(Color::Black);
+                                style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
                                 display_val = tab.edit_buffer.clone();
                             } else {
                                 style = style.add_modifier(Modifier::REVERSED);

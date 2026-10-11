@@ -45,14 +45,11 @@ pub fn draw_query_popup(f: &mut Frame, app: &App) {
             }
             let is_selected = i == app.query_suggestion_index;
             let style = if is_selected {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
-                Style::default().fg(Color::White).bg(Color::DarkGray)
+                Style::default().fg(Color::DarkGray)
             };
-            spans.push(Span::styled(format!(" {sug} "), style));
+            spans.push(Span::styled(format!(" [{sug}] "), style));
         }
 
         f.render_widget(
@@ -198,7 +195,7 @@ pub fn draw_named_queries_list(f: &mut Frame, app: &App) {
         .enumerate()
         .map(|(i, q)| {
             let style = if i == app.named_query_index {
-                Style::default().fg(Color::Black).bg(Color::Yellow)
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
                 Style::default()
             };

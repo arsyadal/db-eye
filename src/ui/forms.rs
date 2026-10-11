@@ -216,9 +216,16 @@ pub fn draw_confirm_delete(f: &mut Frame, app: &App) {
         ),
         chunks[0],
     );
+    let y_style = Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED);
+    let n_style = Style::default().fg(Color::DarkGray);
+    let spans = vec![
+        Span::raw("  "),
+        Span::styled(" [Y] Yes, delete ", y_style),
+        Span::raw("    "),
+        Span::styled(" [N] Cancel ", n_style),
+    ];
     f.render_widget(
-        Paragraph::new("  [Y] Yes, delete     [N] Cancel")
-            .block(Block::default().borders(Borders::ALL)),
+        Paragraph::new(Line::from(spans)).block(Block::default().borders(Borders::ALL)),
         chunks[1],
     );
 }
@@ -295,43 +302,25 @@ pub fn draw_export_popup(f: &mut Frame, app: &App) {
         Style::default().add_modifier(Modifier::BOLD),
     );
     let format_csv = Span::styled(
-        " CSV ",
+        " [CSV] ",
         if form.format == crate::app::ExportFormat::Csv {
-            Style::default()
-                .fg(Color::Black)
-                .bg(if form.active_field == 0 {
-                    Color::Yellow
-                } else {
-                    Color::Green
-                })
+            Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
         } else {
             Style::default().fg(Color::DarkGray)
         },
     );
     let format_json = Span::styled(
-        " JSON ",
+        " [JSON] ",
         if form.format == crate::app::ExportFormat::Json {
-            Style::default()
-                .fg(Color::Black)
-                .bg(if form.active_field == 0 {
-                    Color::Yellow
-                } else {
-                    Color::Green
-                })
+            Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
         } else {
             Style::default().fg(Color::DarkGray)
         },
     );
     let format_sql = Span::styled(
-        " SQL ",
+        " [SQL] ",
         if form.format == crate::app::ExportFormat::Sql {
-            Style::default()
-                .fg(Color::Black)
-                .bg(if form.active_field == 0 {
-                    Color::Yellow
-                } else {
-                    Color::Green
-                })
+            Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
         } else {
             Style::default().fg(Color::DarkGray)
         },
@@ -354,43 +343,25 @@ pub fn draw_export_popup(f: &mut Frame, app: &App) {
             Style::default().add_modifier(Modifier::BOLD),
         );
         let delim_comma = Span::styled(
-            " Comma (,) ",
+            " [Comma] ",
             if form.csv_delimiter == crate::app::CsvDelimiter::Comma {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(if form.active_field == 1 {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    })
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
                 Style::default().fg(Color::DarkGray)
             },
         );
         let delim_semi = Span::styled(
-            " Semicolon (;) ",
+            " [Semicolon] ",
             if form.csv_delimiter == crate::app::CsvDelimiter::Semicolon {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(if form.active_field == 1 {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    })
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
                 Style::default().fg(Color::DarkGray)
             },
         );
         let delim_tab = Span::styled(
-            " Tab (\\t) ",
+            " [Tab] ",
             if form.csv_delimiter == crate::app::CsvDelimiter::Tab {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(if form.active_field == 1 {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    })
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
                 Style::default().fg(Color::DarkGray)
             },
@@ -412,33 +383,22 @@ pub fn draw_export_popup(f: &mut Frame, app: &App) {
             Style::default().add_modifier(Modifier::BOLD),
         );
         let headers_yes = Span::styled(
-            " Yes ",
+            " [Yes] ",
             if form.csv_headers {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(if form.active_field == 2 {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    })
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
                 Style::default().fg(Color::DarkGray)
             },
         );
         let headers_no = Span::styled(
-            " No ",
+            " [No] ",
             if !form.csv_headers {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(if form.active_field == 2 {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    })
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
                 Style::default().fg(Color::DarkGray)
             },
         );
+
         let headers_line = Line::from(vec![
             headers_label,
             Span::raw(" "),
@@ -484,9 +444,9 @@ pub fn draw_export_popup(f: &mut Frame, app: &App) {
         .split(btn_area);
 
     let export_btn_style = if form.active_field == 4 {
-        Style::default().fg(Color::Black).bg(Color::Yellow)
+        Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
     } else {
-        Style::default().fg(Color::Green)
+        Style::default()
     };
     f.render_widget(
         Paragraph::new(" [ Export ] ").style(export_btn_style),
@@ -494,9 +454,9 @@ pub fn draw_export_popup(f: &mut Frame, app: &App) {
     );
 
     let cancel_btn_style = if form.active_field == 5 {
-        Style::default().fg(Color::Black).bg(Color::Yellow)
+        Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
     } else {
-        Style::default().fg(Color::Red)
+        Style::default().fg(Color::DarkGray)
     };
     f.render_widget(
         Paragraph::new(" [ Cancel ] ").style(cancel_btn_style),
@@ -558,43 +518,25 @@ pub fn draw_import_popup(f: &mut Frame, app: &App) {
             Style::default().add_modifier(Modifier::BOLD),
         );
         let delim_comma = Span::styled(
-            " Comma (,) ",
+            " [Comma] ",
             if form.delimiter == crate::app::ImportDelimiter::Comma {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(if form.active_field == 1 {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    })
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
                 Style::default().fg(Color::DarkGray)
             },
         );
         let delim_semi = Span::styled(
-            " Semicolon (;) ",
+            " [Semicolon] ",
             if form.delimiter == crate::app::ImportDelimiter::Semicolon {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(if form.active_field == 1 {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    })
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
                 Style::default().fg(Color::DarkGray)
             },
         );
         let delim_tab = Span::styled(
-            " Tab (\\t) ",
+            " [Tab] ",
             if form.delimiter == crate::app::ImportDelimiter::Tab {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(if form.active_field == 1 {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    })
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
                 Style::default().fg(Color::DarkGray)
             },
@@ -616,33 +558,22 @@ pub fn draw_import_popup(f: &mut Frame, app: &App) {
             Style::default().add_modifier(Modifier::BOLD),
         );
         let headers_yes = Span::styled(
-            " Yes ",
+            " [Yes] ",
             if form.has_headers {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(if form.active_field == 2 {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    })
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
                 Style::default().fg(Color::DarkGray)
             },
         );
         let headers_no = Span::styled(
-            " No ",
+            " [No] ",
             if !form.has_headers {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(if form.active_field == 2 {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    })
+                Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
                 Style::default().fg(Color::DarkGray)
             },
         );
+
         let headers_line = Line::from(vec![
             headers_label,
             Span::raw(" "),
@@ -673,9 +604,9 @@ pub fn draw_import_popup(f: &mut Frame, app: &App) {
             .split(chunks[4]);
 
         let preview_btn_style = if form.active_field == 3 {
-            Style::default().fg(Color::Black).bg(Color::Yellow)
+            Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
         } else {
-            Style::default().fg(Color::Green)
+            Style::default()
         };
         f.render_widget(
             Paragraph::new(" [ Preview ] ").style(preview_btn_style),
@@ -683,9 +614,9 @@ pub fn draw_import_popup(f: &mut Frame, app: &App) {
         );
 
         let cancel_btn_style = if form.active_field == 4 {
-            Style::default().fg(Color::Black).bg(Color::Yellow)
+            Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
         } else {
-            Style::default().fg(Color::Red)
+            Style::default().fg(Color::DarkGray)
         };
         f.render_widget(
             Paragraph::new(" [ Cancel ] ").style(cancel_btn_style),
@@ -782,9 +713,9 @@ pub fn draw_import_popup(f: &mut Frame, app: &App) {
             .split(chunks[4]);
 
         let import_btn_style = if form.active_field == 3 {
-            Style::default().fg(Color::Black).bg(Color::Yellow)
+            Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
         } else {
-            Style::default().fg(Color::Green)
+            Style::default()
         };
         f.render_widget(
             Paragraph::new(" [ Confirm Import ] ").style(import_btn_style),
@@ -792,9 +723,9 @@ pub fn draw_import_popup(f: &mut Frame, app: &App) {
         );
 
         let cancel_btn_style = if form.active_field == 4 {
-            Style::default().fg(Color::Black).bg(Color::Yellow)
+            Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
         } else {
-            Style::default().fg(Color::Red)
+            Style::default().fg(Color::DarkGray)
         };
         f.render_widget(
             Paragraph::new(" [ Cancel ] ").style(cancel_btn_style),
