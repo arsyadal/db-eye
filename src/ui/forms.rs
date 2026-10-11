@@ -204,20 +204,20 @@ pub fn draw_confirm_delete(f: &mut Frame, app: &App) {
         .split(area);
 
     let content = format!(
-        "\n  {}\n\n  SQL: {}\n\n  Tekan Y untuk konfirmasi, N untuk batal",
+        "\n  {}\n\n  SQL: {}\n\n  Press Y to confirm, N to cancel",
         confirm.description, confirm.sql
     );
     f.render_widget(
         Paragraph::new(content).block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" ⚠ Konfirmasi Delete ")
+                .title(" ⚠ Confirm Delete ")
                 .border_style(Style::default().add_modifier(Modifier::BOLD)),
         ),
         chunks[0],
     );
     f.render_widget(
-        Paragraph::new("  [Y] Ya, hapus     [N] Batal")
+        Paragraph::new("  [Y] Yes, delete     [N] Cancel")
             .block(Block::default().borders(Borders::ALL)),
         chunks[1],
     );
