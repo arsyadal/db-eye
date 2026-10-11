@@ -233,6 +233,11 @@ impl App {
             self.status = "j/k: navigate  Enter: select schema  Esc: back".into();
             return;
         }
+        if self.server_conn.is_some() {
+            self.screen = Screen::Databases;
+            self.status = "j/k: navigate  Enter: open database  Esc: back".into();
+            return;
+        }
 
         let server_info = self.current_tab().and_then(|t| t.server_info.clone());
         if let Some((form, db_type)) = server_info {

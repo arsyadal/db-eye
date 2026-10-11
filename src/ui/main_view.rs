@@ -1,3 +1,4 @@
+use super::components::format_status_to_spans;
 use super::data_panel::draw_data_panel;
 use crate::app::{App, Focus};
 use ratatui::{
@@ -48,7 +49,8 @@ pub fn draw_main(f: &mut Frame, app: &App) {
     draw_data_panel(f, app, horiz[1]);
 
     f.render_widget(
-        Paragraph::new(app.status.as_str()).block(Block::default().borders(Borders::ALL)),
+        Paragraph::new(format_status_to_spans(app.status.as_str()))
+            .block(Block::default().borders(Borders::ALL)),
         vert[2],
     );
 }
@@ -122,7 +124,10 @@ pub fn draw_databases(f: &mut Frame, app: &App) {
 
     let sc = match app.server_conn.as_ref() {
         Some(s) => s,
-        None => return,
+        None => {
+            super::connect::draw_connect(f, app);
+            return;
+        }
     };
 
     let title = format!(
@@ -156,7 +161,7 @@ pub fn draw_databases(f: &mut Frame, app: &App) {
 
     f.render_widget(table, chunks[0]);
     f.render_widget(
-        Paragraph::new(app.status.as_str())
+        Paragraph::new(format_status_to_spans(app.status.as_str()))
             .block(Block::default().borders(Borders::ALL).title(" Keys ")),
         chunks[1],
     );
@@ -170,7 +175,10 @@ pub fn draw_schemas(f: &mut Frame, app: &App) {
 
     let tab = match app.current_tab() {
         Some(t) => t,
-        None => return,
+        None => {
+            super::connect::draw_connect(f, app);
+            return;
+        }
     };
 
     let title = format!(" Schemas — {} ", tab.path);
@@ -199,7 +207,7 @@ pub fn draw_schemas(f: &mut Frame, app: &App) {
 
     f.render_widget(table, chunks[0]);
     f.render_widget(
-        Paragraph::new(app.status.as_str())
+        Paragraph::new(format_status_to_spans(app.status.as_str()))
             .block(Block::default().borders(Borders::ALL).title(" Keys ")),
         chunks[1],
     );

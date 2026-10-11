@@ -1,4 +1,4 @@
-use super::components::{db_type_selector, render_input_box};
+use super::components::{db_type_selector, format_status_to_spans, render_input_box};
 use crate::app::{App, ConnectForm, DbTypeChoice, Focus};
 use ratatui::{
     Frame,
@@ -114,7 +114,7 @@ fn draw_connect_sqlite(f: &mut Frame, app: &App, area: Rect) {
         chunks[4],
     );
     f.render_widget(
-        Paragraph::new(app.status.as_str())
+        Paragraph::new(format_status_to_spans(app.status.as_str()))
             .block(Block::default().borders(Borders::ALL).title(" Status ")),
         chunks[5],
     );
@@ -203,7 +203,7 @@ fn draw_connect_server(f: &mut Frame, app: &App, area: Rect) {
     );
 
     f.render_widget(
-        Paragraph::new(app.status.as_str())
+        Paragraph::new(format_status_to_spans(app.status.as_str()))
             .block(Block::default().borders(Borders::ALL).title(" Status ")),
         chunks[8],
     );

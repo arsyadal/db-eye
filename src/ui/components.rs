@@ -95,6 +95,96 @@ pub fn db_type_selector<'a>(app: &'a App) -> Paragraph<'a> {
     )
 }
 
+pub fn format_status_to_spans<'a>(status: &'a str) -> Line<'a> {
+    if status.starts_with("Error") || status.starts_with("error") {
+        return Line::from(vec![
+            Span::styled(
+                " ✖ ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                status,
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+        ]);
+    }
+
+    let mut spans = Vec::new();
+    let parts: Vec<&str> = status
+        .split("  ")
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .collect();
+
+    for p in parts {
+        if p == "|" || p == "•" {
+            continue;
+        }
+        if !spans.is_empty() {
+            spans.push(Span::styled(" • ", Style::default().fg(Color::DarkGray)));
+        }
+
+        if p == "READ-ONLY" {
+            spans.push(Span::styled(
+                " READ-ONLY ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Red)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        } else if let Some(conn) = p.strip_prefix("Connected:") {
+            spans.push(Span::styled(
+                format!("● Connected:{}", conn),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        } else if p == ": (SQL query)"
+            || p == ":: (SQL query)"
+            || p == ":::SQL query"
+            || p == "::SQL query"
+        {
+            spans.push(Span::styled(
+                " [:] ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled("SQL query", Style::default()));
+        } else if let Some(colon_idx) = p.find(':') {
+            let key = p[..colon_idx].trim();
+            let desc = p[colon_idx + 1..].trim();
+            if key.is_empty() {
+                spans.push(Span::styled(
+                    " [:] ",
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            } else {
+                spans.push(Span::styled(
+                    format!(" [{key}] "),
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            }
+            if !desc.is_empty() {
+                spans.push(Span::raw(" "));
+                spans.push(Span::styled(desc, Style::default()));
+            }
+        } else {
+            spans.push(Span::styled(p, Style::default().fg(Color::DarkGray)));
+        }
+    }
+
+    Line::from(spans)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

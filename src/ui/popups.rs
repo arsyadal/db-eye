@@ -262,6 +262,7 @@ pub fn draw_help_popup(f: &mut Frame) {
         Line::from(" Tab        Switch focus (Tables list / Data panel)"),
         Line::from(" j / k      Navigate lists (Tables, Databases, Schemas, Saved)"),
         Line::from(" Enter      Select / Open / Load connection"),
+        Line::from(" n          Create new database (on Databases list)"),
         Line::from(""),
         Line::from(Span::styled(
             " Data Panel ",
@@ -344,4 +345,22 @@ pub fn draw_table_stats_popup(f: &mut Frame, app: &App) {
         .wrap(ratatui::widgets::Wrap { trim: false });
 
     f.render_widget(para, area);
+}
+
+pub fn draw_new_database_prompt(f: &mut Frame, app: &App) {
+    let area = centered_rect(65, 5, f.area());
+    f.render_widget(Clear, area);
+
+    let max_w = area.width.saturating_sub(6) as usize;
+    let (visible, cursor_x) = scroll_input_view(&app.new_db_input, app.new_db_input.len(), max_w);
+
+    f.render_widget(
+        Paragraph::new(format!("> {}", visible)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Create New Database — Enter: create  Esc: cancel "),
+        ),
+        area,
+    );
+    f.set_cursor_position((area.x + 3 + cursor_x, area.y + 1));
 }

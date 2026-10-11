@@ -63,5 +63,9 @@ pub fn draw(f: &mut Frame, app: &App) {
             main_view::draw_main(f, app);
             popups::draw_named_queries_list(f, app);
         }
+        Screen::NewDatabasePrompt => {
+            main_view::draw_databases(f, app);
+            popups::draw_new_database_prompt(f, app);
+        }
     }
 }

@@ -45,6 +45,7 @@ pub enum Screen {
     ImportForm,
     SaveQueryPrompt,
     NamedQueriesList,
+    NewDatabasePrompt,
 }
 
 pub struct App {
@@ -78,6 +79,7 @@ pub struct App {
     pub named_queries: Vec<NamedQuery>,
     pub save_query_input: String,
     pub named_query_index: usize,
+    pub new_db_input: String,
     pub update_notice: Option<String>,
     pub update_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
 }
@@ -127,6 +129,7 @@ impl App {
             named_queries: vec![],
             save_query_input: String::new(),
             named_query_index: 0,
+            new_db_input: String::new(),
             update_notice: cached_update,
             update_rx: Some(update_rx),
         };
@@ -186,6 +189,7 @@ impl App {
                     Screen::ImportForm => self.handle_import_form(key.code).await,
                     Screen::SaveQueryPrompt => self.handle_save_query_prompt(key.code),
                     Screen::NamedQueriesList => self.handle_named_queries_list(key.code),
+                    Screen::NewDatabasePrompt => self.handle_new_database_prompt(key.code).await,
                 }
             }
         }

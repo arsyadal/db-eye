@@ -67,12 +67,17 @@ pub struct ConnectForm {
 impl ConnectForm {
     pub fn new(db_type: &DbTypeChoice) -> Self {
         let pass = std::env::var("DB_PASSWORD").unwrap_or_default();
+        let user = match db_type {
+            DbTypeChoice::Postgres => "postgres".to_string(),
+            DbTypeChoice::Mysql => "root".to_string(),
+            DbTypeChoice::Sqlite => String::new(),
+        };
         Self {
             host: "localhost".into(),
             port: db_type.default_port().into(),
-            user: String::new(),
+            user,
             pass,
-            active: 2, // start on User
+            active: 3, // start on Password field
         }
     }
 
@@ -239,7 +244,6 @@ impl App {
                         };
                         self.screen = Screen::Main;
                         self.focus = Focus::Tables;
-                        self.server_conn = None;
                         self.status = format!(
                             "Connected: {} ({})  |  {}",
                             path,
@@ -261,8 +265,14 @@ impl App {
                         self.active_tab = self.tabs.len() - 1;
                     }
                 }
-                self.screen = Screen::Databases;
-                self.status = "j/k: navigate  Enter: open database  Esc: back".into();
+                if self.server_conn.is_some() {
+                    self.screen = Screen::Databases;
+                    self.status =
+                        "j/k: navigate  Enter: open database  n: new database  Esc: back".into();
+                } else {
+                    self.screen = Screen::Connect;
+                    self.status = self.connect_help().into();
+                }
             }
             _ => {}
         }
@@ -366,6 +376,14 @@ impl App {
     }
 
     async fn connect_to_server(&mut self) {
+        if self.connect_form.user.trim().is_empty() {
+            let default_u = match self.db_type {
+                DbTypeChoice::Postgres => "postgres",
+                DbTypeChoice::Mysql => "root",
+                _ => "",
+            };
+            self.connect_form.user = default_u.to_string();
+        }
         let url = self.connect_form.server_url(&self.db_type);
         self.status = format!(
             "Connecting to {}:{}...",
@@ -381,7 +399,8 @@ impl App {
                         db_index: 0,
                     });
                     self.screen = Screen::Databases;
-                    self.status = "j/k: navigate  Enter: open database  Esc: back".into();
+                    self.status =
+                        "j/k: navigate  Enter: open database  n: new database  Esc: back".into();
                 }
                 Err(e) => {
                     self.status = format_db_error("Listing databases", &e);
@@ -523,7 +542,6 @@ impl App {
                 self.active_tab = self.tabs.len() - 1;
                 self.screen = Screen::Main;
                 self.focus = Focus::Tables;
-                self.server_conn = None;
                 self.status = format!("Connected: {}  |  {}", display, self.table_help());
             }
             Err(e) => {
@@ -674,10 +692,91 @@ impl App {
             KeyCode::Enter => {
                 self.connect_to_selected_db().await;
             }
+            KeyCode::Char('n') => {
+                self.new_db_input.clear();
+                self.screen = Screen::NewDatabasePrompt;
+                self.status = "Enter new database name; Esc cancels".into();
+            }
             KeyCode::Esc => {
                 self.server_conn = None;
                 self.screen = Screen::Connect;
                 self.status = self.connect_help().into();
+            }
+            _ => {}
+        }
+    }
+
+    pub(super) async fn handle_new_database_prompt(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Char(c) => {
+                self.new_db_input.push(c);
+            }
+            KeyCode::Backspace => {
+                self.new_db_input.pop();
+            }
+            KeyCode::Enter => {
+                let db_name = self.new_db_input.trim().to_string();
+                if db_name.is_empty() {
+                    self.screen = Screen::Databases;
+                    self.status =
+                        "j/k: navigate  Enter: open database  n: new database  Esc: back".into();
+                    return;
+                }
+
+                let (server_url, db_type) = if let Some(sc) = &self.server_conn {
+                    (sc.form.server_url(&sc.db_type), sc.db_type.clone())
+                } else {
+                    self.screen = Screen::Databases;
+                    return;
+                };
+
+                let sql = match db_type {
+                    DbTypeChoice::Postgres => {
+                        format!("CREATE DATABASE \"{}\"", db_name.replace('"', "\"\""))
+                    }
+                    DbTypeChoice::Mysql => {
+                        format!("CREATE DATABASE `{}`", db_name.replace('`', "``"))
+                    }
+                    _ => String::new(),
+                };
+
+                self.status = format!("Creating database '{}'...", db_name);
+                match crate::db::DbClient::connect(&server_url).await {
+                    Ok(client) => match sqlx::query(&sql).execute(&client.pool).await {
+                        Ok(_) => match client.list_databases().await {
+                            Ok(databases) => {
+                                let new_index =
+                                    databases.iter().position(|d| d == &db_name).unwrap_or(0);
+                                if let Some(ref mut sc) = self.server_conn {
+                                    sc.databases = databases;
+                                    sc.db_index = new_index;
+                                }
+                                self.screen = Screen::Databases;
+                                self.status = format!(
+                                    "Database '{}' created successfully  |  j/k: navigate  Enter: open  n: new  Esc: back",
+                                    db_name
+                                );
+                            }
+                            Err(e) => {
+                                self.screen = Screen::Databases;
+                                self.status = format_db_error("Listing databases", &e);
+                            }
+                        },
+                        Err(e) => {
+                            self.screen = Screen::Databases;
+                            self.status = format_db_error("Create database", &e);
+                        }
+                    },
+                    Err(e) => {
+                        self.screen = Screen::Databases;
+                        self.status = format_db_error("Connect", &e);
+                    }
+                }
+            }
+            KeyCode::Esc => {
+                self.screen = Screen::Databases;
+                self.status =
+                    "j/k: navigate  Enter: open database  n: new database  Esc: back".into();
             }
             _ => {}
         }
