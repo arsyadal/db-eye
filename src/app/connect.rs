@@ -268,6 +268,27 @@ impl App {
         }
     }
 
+    pub fn detect_default_sqlite_path() -> String {
+        if let Ok(entries) = std::fs::read_dir(".") {
+            let mut candidates = Vec::new();
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file()
+                    && let Some(ext) = p.extension().and_then(|e| e.to_str())
+                    && matches!(ext.to_lowercase().as_str(), "sqlite" | "db" | "sqlite3")
+                    && let Some(filename) = p.file_name().and_then(|n| n.to_str())
+                {
+                    candidates.push(format!("./{filename}"));
+                }
+            }
+            candidates.sort();
+            if let Some(first) = candidates.into_iter().next() {
+                return first;
+            }
+        }
+        "./database.sqlite".to_string()
+    }
+
     fn apply_sqlite_mode(&self, path: &str) -> String {
         if path == ":memory:" || path == "sqlite::memory:" {
             return path.to_string();
@@ -596,10 +617,12 @@ impl App {
                 } else {
                     match self.db_type {
                         DbTypeChoice::Sqlite => {
-                            let path = self.sqlite_input.trim().to_string();
-                            if !path.is_empty() {
-                                self.connect_sqlite(path).await;
-                            }
+                            let path = if self.sqlite_input.trim().is_empty() {
+                                Self::detect_default_sqlite_path()
+                            } else {
+                                self.sqlite_input.trim().to_string()
+                            };
+                            self.connect_sqlite(path).await;
                         }
                         _ => {
                             let url = self.connection_url_input.trim().to_string();

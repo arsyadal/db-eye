@@ -101,7 +101,7 @@ impl App {
             focus: Focus::Tables,
             tabs: vec![],
             active_tab: 0,
-            sqlite_input: String::new(),
+            sqlite_input: Self::detect_default_sqlite_path(),
             connect_form: ConnectForm::new(&DbTypeChoice::Postgres),
             db_type: DbTypeChoice::Sqlite,
             connection_url_input: String::new(),

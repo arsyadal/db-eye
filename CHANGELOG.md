@@ -1,29 +1,30 @@
 # Changelog
 
-Semua perubahan penting DB-Eye dicatat di file ini.
+All notable changes to DB-Eye are documented in this file.
 
-Format mengikuti [Keep a Changelog](https://keepachangelog.com/) dan versi mengikuti Semantic Versioning ([SemVer 2.0.0](https://semver.org/lang/id/)).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### Aturan Penomoran Versi (SemVer Guidelines)
+### Semantic Versioning Guidelines (SemVer)
 
-Format rilis menggunakan struktur **MAJOR.MINOR.PATCH**:
+Releases follow the **MAJOR.MINOR.PATCH** structure:
 
-- **MAJOR (`X.0.0`)** — Naikkan ketika ada perubahan besar yang tidak kompatibel ke belakang (*breaking changes*):
-  - Perubahan format argumen/flag CLI yang menghapus atau mengubah opsi lama.
-  - Perubahan skema file konfigurasi, riwayat query, atau koneksi tersimpan yang tidak dapat dibaca oleh versi sebelumnya.
-  - Perombakan arsitektur besar yang mengubah alur kerja utama aplikasi.
+- **MAJOR (`X.0.0`)** — Incremented when introducing incompatible API or breaking changes:
+  - Changes to CLI flags or arguments that break existing scripts or workflows.
+  - Incompatible configuration, query history, or saved connection schema migrations.
+  - Major architectural overhauls that fundamentally alter the application workflow.
 
-- **MINOR (`0.X.0`)** — Naikkan ketika ada penambahan fitur baru yang tetap kompatibel ke belakang (*backward-compatible*):
-  - Penambahan fitur, dialog, atau screen baru (misal: export/import, persistence, auto-refresh schema).
-  - Penambahan dukungan driver database atau tipe data baru.
-  - Penambahan shortcut keyboard baru tanpa mematahkan navigasi yang sudah ada.
-  - Peningkatan fungsionalitas tanpa merusak backward compatibility.
+- **MINOR (`0.X.0`)** — Incremented when adding new backward-compatible features:
+  - New features, dialogs, or screens (e.g. export/import, persistence, auto-refresh schema, self-update).
+  - Support for new database drivers or data types.
+  - New keybindings or configuration options that preserve existing navigation.
+  - Significant functional enhancements without breaking backward compatibility.
 
-- **PATCH (`0.0.X`)** — Naikkan ketika hanya ada perbaikan bug atau penyesuaian kecil:
-  - Perbaikan bug (*bugfixes*) atau penanganan crash/edge-cases.
-  - Patch keamanan (*security fixes*).
-  - Perbaikan typo, styling warna, atau perbaikan label antarmuka (UI).
-  - Optimasi internal dan refactor kode tanpa mengubah fungsi publik.
+- **PATCH (`0.0.X`)** — Incremented when making backward-compatible bug fixes or adjustments:
+  - Bug fixes, edge-case handling, or crash resolutions.
+  - Security patches and dependency vulnerability updates.
+  - Typo fixes, UI styling refinements, or status label tweaks.
+  - Internal refactoring and performance optimizations without changing public behavior.
 
 ## [Unreleased]
 
@@ -31,133 +32,90 @@ Format rilis menggunakan struktur **MAJOR.MINOR.PATCH**:
 
 ### Added
 
-- SQLite Auto-Creation & Read-Only Connection Flags:
-  - Otomatis membuat database file SQLite baru bila belum ada via normalisasi URL `?mode=rwc`.
-  - Mode read-only (`-r` / `--read-only`) menerapkan `mode=ro` di level connection string untuk hardware/engine-level rejection terhadap operasi write.
-  - Status help connect menampilkan `(SQLite creates file if missing)`.
+- Self-Update Command & Background Notification:
+  - Added `db-eye update` CLI subcommand to automatically check, download, and replace the executable in-place using `self-replace`.
+  - Added non-blocking background update check with 24-hour cache TTL (`~/.config/db-eye/update_check.json`) without startup latency.
+  - Subtle update indicator on Connect screen and Help screen whenever a new release is available.
+- Automated Multi-Platform Release CI/CD:
+  - Added GitHub Actions workflow (`.github/workflows/release.yml`) triggered on version tags (`v*`).
+  - Pre-built binary archives and standalone executables for Linux x86_64, macOS Apple Silicon, macOS Intel, and Windows x64 with SHA256 checksums.
+- SQLite Auto-Creation & Read-Only Flags:
+  - Automatically create non-existent SQLite files upon connection via URL normalization with `?mode=rwc`.
+  - Read-only mode (`-r` / `--read-only`) applies `mode=ro` at the connection string level for engine-level write rejection.
+  - Connect help text displays `(SQLite creates file if missing)`.
 - Token-Level Read-Only SQL Scanner:
-  - Scanner multi-pass yang menghapus komentar SQL (`--`, `/* */`), string literal (`'...'`), dan identifier (`"..."`, ``` `...` ```).
-  - Memblokir data-modifying CTEs (`WITH ins AS (INSERT ...) SELECT ...`), multi-statement injection (`SELECT 1; DROP TABLE ...;`), `SELECT ... INTO`, dan mutating pragmas (`PRAGMA ... = ...`).
-  - Mengizinkan inspection pragmas (`PRAGMA table_info(...)`).
+  - Multi-pass tokenizer stripping SQL comments (`--`, `/* */`), string literals (`'...'`), and quoted identifiers (`"..."`, ``` `...` ```).
+  - Blocks mutating CTEs (`WITH ins AS (INSERT ...) SELECT ...`), multi-statement injection (`SELECT 1; DROP TABLE ...;`), `SELECT ... INTO`, and mutating pragmas (`PRAGMA ... = ...`).
+  - Permits inspection pragmas such as `PRAGMA table_info(...)`.
 - Exact Type Mapping & Decimal Separation:
-  - Pemisahan tipe data desimal (`decimal`, `numeric`, `dec`, `fixed`) dari float murni (`real`, `double`, `float`).
-  - Menghindari kesalahan pencocokan substring `.contains("int")` pada custom types/enums (`point`, `international_code`, `interval`).
-  - Validasi input desimal dengan presisi tinggi tanpa konversi atau casting lossy ke `f64`.
-  - Menghapus pemotongan desimal `{:.4}` pada pembacaan baris tabel, menampilkan nilai natural.
+  - Separated fixed-point decimal types (`decimal`, `numeric`, `dec`, `fixed`) from floating-point types (`real`, `double`, `float`).
+  - Prevented false integer matching from `.contains("int")` on custom types/enums (`point`, `international_code`, `interval`).
+  - High-precision decimal input validation without lossy conversion or casting to `f64`.
+  - Removed `{:.4}` truncation when formatting table rows, rendering natural precision.
 - Driver Error Code & SQLSTATE Classification:
-  - Pemetaan kode error native driver (PostgreSQL SQLSTATE, MySQL error codes, SQLite extended result codes) sebelum fallback ke string matching.
-- Non-Nested Row Decoding:
-  - Ekstraksi helper flat `decode_any_cell` menggantikan closure bertingkat 6–7 level pada decoding row cell.
+  - Native driver error code classification (PostgreSQL SQLSTATE, MySQL error codes, SQLite extended result codes) before message string fallback.
+- Flat Row Decoding Architecture:
+  - Replaced 6–7 levels of nested closures in row decoding with a flat `decode_any_cell` helper across `row_cell`, `row_to_strings`, and `row_to_strings_checked`.
 - Persistent Query History:
-  - Riwayat query SQL otomatis disimpan dan dimuat antar sesi via file `~/.config/db-eye/history.json` (max 100 query).
-- UX & Discoverability Enhancements:
-  - Navigasi kursor teks pada query editor (`Left`, `Right`, `Home`, `End`, `Delete`, `Backspace`, char insertion mid-string).
-  - Schema auto-refresh: panel tabel langsung diperbarui setelah eksekusi DDL (`CREATE TABLE`, dll).
-  - Shortcut SQL query editor diubah dari `::SQL query` menjadi `: (SQL query)` agar mudah ditemukan.
-  - Shortcut editor dan history dipindahkan ke bagian atas `General` pada popup bantuan (`?`).
-- Export and Import UI & Options:
-  - Form dialog ekspor via `v` dengan opsi format (CSV, JSON, SQL INSERT).
-  - Opsi delimiter dan header untuk ekspor CSV, serta penamaan file otomatis/kustom.
-  - Impor file CSV ke tabel database yang aktif via `I` (Shift+I) dengan deteksi kolom case-insensitive dan pencocokan otomatis.
-  - Preview data sampel (5 baris pertama) dan review pemetaan kolom CSV → DB sebelum ekspor/impor dijalankan.
+  - SQL query history persists across sessions in `~/.config/db-eye/history.json` (up to 100 entries).
+- UX & Discoverability Refactor:
+  - Cursor navigation in query editor (`Left`, `Right`, `Home`, `End`, `Delete`, `Backspace`, mid-string character insertion).
+  - Schema auto-refresh: tables panel updates immediately after DDL execution (`CREATE TABLE`, etc.).
+  - SQL query editor shortcut updated to `: (SQL query)` in help text for clarity.
+  - Moved Query Editor and Query History shortcuts to the top `General` section in the Help screen (`?`).
+- Export & Import Dialogs:
+  - Export dialog (`v`) supporting CSV, JSON, and SQL INSERT formats with delimiter and header options.
+  - CSV import dialog (`I` / `Shift+I`) with case-insensitive column matching, 5-row sample preview, and column mapping review.
 - Explain Query Plan:
-  - Dukungan untuk `EXPLAIN` (PostgreSQL/MySQL) dan `EXPLAIN QUERY PLAN` (SQLite) via shortcut `Ctrl+E` dari popup input SQL Query.
-- Named Queries & Env Password:
-  - Dukungan penyimpanan SQL query aktif menjadi named query via `Ctrl+S` di popup Query.
-  - Membuka daftar named query via `Ctrl+N` untuk diload/dihapus (persistensi via file `queries.json` lokal).
-  - Membaca password default dari variable lingkungan `DB_PASSWORD` saat mengisi form koneksi atau parsing URL koneksi.
-- Clipboard Copy Shortcuts:
-  - Shortcut `y` untuk menyalin nilai sel (cell) aktif ke clipboard sistem.
-  - Shortcut `Y` (Shift+Y) untuk menyalin baris (row) aktif (dipisahkan oleh tab) ke clipboard sistem.
-  - Shortcut `C` (Shift+C) untuk menyalin seluruh kolom (column) aktif (dipisahkan oleh newline) ke clipboard sistem.
+  - Added `EXPLAIN` (PostgreSQL/MySQL) and `EXPLAIN QUERY PLAN` (SQLite) via `Ctrl+E` in the SQL Query editor.
+- Named Queries & Environment Password:
+  - Save active query as a named query via `Ctrl+S`, browse and load named queries via `Ctrl+N` (persisted in `~/.config/db-eye/queries.json`).
+  - Read default password from `DB_PASSWORD` environment variable when connecting.
+- Clipboard Shortcuts:
+  - Copy active cell value (`y`), copy active row tab-separated (`Y`), copy active column newline-separated (`C`).
 - Inline Cell Editing:
-  - Edit cell langsung di panel data via `Enter` atau `e`.
-  - Simpan perubahan ke database via parameterized `UPDATE`.
-  - Visual feedback warna kuning pada cell yang sedang diedit.
-- Data type handling:
-  - Validasi input CRUD/inline edit untuk integer, number, boolean, dan binary/blob.
-  - Nilai NULL ditampilkan sebagai `<NULL>` supaya string `NULL` tetap beda dari database NULL.
-  - Input kosong atau `\\null` pada form CRUD/edit dikirim sebagai database NULL.
-- Saved Connections:
-  - Simpan konfigurasi koneksi (host, user, dsb) via `Ctrl+S`.
-  - Pilih dari daftar koneksi tersimpan pada screen Connect via `Tab`.
-  - Persistensi data menggunakan file JSON lokal.
-  - Shortcut `Delete` untuk menghapus koneksi tersimpan.
-- Help screen popup via `?` key displaying categorized keybindings.
-- "Rows affected" reporting for custom write queries (INSERT, UPDATE, DELETE).
-- In-memory query history per tab with `Up/Down` navigation in SQL query popup.
-- PostgreSQL schema support:
-  - Schema selection screen flow setelah pilih database.
-  - Dukungan untuk schema non-public pada data browsing, CRUD, dan metadata.
-  - Schema-qualified table names pada SQL generation.
-  - Tampilan active schema pada UI table panel.
-- `PRD.md` sebagai production roadmap.
-- `docs/DEVELOPMENT.md` untuk alur development dan definition of done.
-- `docs/DEVLOG.md` untuk catatan perkembangan.
-- Template feature spec dan release checklist.
-- Unit tests untuk CRUD statement builder.
-- SQLite test untuk parameterized write values.
-- Read-only mode via `--read-only` / `-r` untuk memblokir write actions dan destructive custom SQL.
-- Friendly database error formatter untuk constraint, permission, connection, dan syntax errors.
-- SQLite CRUD end-to-end test untuk insert/update/delete flow.
-- Composite primary key support untuk update/delete statements dan SQLite metadata tests.
-- GitHub Actions CI untuk fmt, clippy, test, dan release build.
-- Direct PostgreSQL/MySQL connection URL input on the Connect screen.
-- Terminal demo GIF in README (`docs/demo.tape`, recorded with `vhs`).
-- Richer column metadata (SQLite/PostgreSQL/MySQL):
-  - Required (`*`) and default-value indicators on insert/update form fields.
-  - Declared length/precision in the displayed column type (e.g. `varchar(255)`, `numeric(10,2)`).
-- Views listed alongside tables in the Tables panel, labeled `(view)` (previously silently mixed in unlabeled for MySQL, silently excluded for SQLite/PostgreSQL).
-- Table stats popup (`s` in the data panel): index list and approximate on-disk size.
-- Manual reconnect action (`Ctrl+R`): re-establishes a dropped connection on the current tab using the original connection URL, then reloads schema/table list and the open table's data if one was loaded. Previously a dropped connection required closing the tab (`Ctrl+W`) and reconnecting from scratch.
-- Per-column sorting (`o` in the data panel): cycles asc → desc → off, implemented as a DB-side `ORDER BY` so it stays correct across pagination.
-- Explicit pagination controls: `PageUp`/`PageDown` for full-page jumps, `g` to jump to a specific row number.
-- Search now shows a live match count in the status bar instead of a stale pre-search message.
-- FK dropdown on insert/update forms: `←`/`→` cycles known foreign-key values directly into the field, instead of only showing them as a hint you had to type manually.
-- Multiline text editor popup (`F2` on an active field) for editing long values, with its own cursor and insert/delete/line-navigation, no new dependency added.
-
-### Fixed
-
-- Data panel status hint mislabeled `e` as export (`e` is inline cell edit; `v` is CSV export).
+  - Edit cells directly in the data panel with `Enter` or `e`, writing back via parameterized `UPDATE`.
+- PostgreSQL Schema Support:
+  - Schema selection screen after database selection with non-public schema browsing, CRUD, and metadata support.
+- Richer Column Metadata & Navigation:
+  - Required (`*`) and default-value indicators in CRUD forms.
+  - Declared length and precision in column types (e.g. `varchar(255)`, `numeric(10,2)`).
+  - Views listed alongside tables with a `(view)` badge.
+  - Table stats popup (`s`): index list and on-disk size estimates.
+  - Manual connection reconnect action (`Ctrl+R`).
+  - Per-column sorting (`o`): cycles asc → desc → off as DB-side `ORDER BY`.
+  - Pagination controls (`PageUp`/`PageDown`, `g` jump to row).
+  - Multiline text editor popup (`F2`) for editing long values.
 
 ### Changed
 
-- CRUD insert/update/delete sekarang memakai bind placeholders untuk values, bukan menyisipkan value langsung ke SQL eksekusi.
-- Custom SQL execution no longer uses deprecated `fetch_many`; read queries fetch rows and write queries report rows affected via `execute`.
+- CRUD write operations (INSERT, UPDATE, DELETE) use bind placeholders rather than string interpolation.
+- Query execution routes read queries to rows fetch and write queries to rows-affected execution.
+- Refactored `classify_db_message` from a long `else if` chain into a declarative table lookup.
 
 ## [0.2.0] - 2026-06-01
 
 ### Added
 
-- CRUD row dasar dari data panel:
-  - insert row
-  - update selected row
-  - delete selected row dengan konfirmasi
-- SQL preview pada form insert/update.
-- Foreign-key value hints pada form insert/update.
-- Dokumentasi install via `cargo install db-eye`.
+- Basic row CRUD operations from data panel (insert, update, delete with confirmation).
+- SQL preview on insert/update forms.
+- Foreign-key value hints on insert/update forms.
+- Installation documentation via `cargo install db-eye`.
 
 ### Changed
 
-- Version package dinaikkan dari `0.1.0` ke `0.2.0`.
-- Status bar data panel menampilkan shortcut CRUD.
+- Package version bumped to `0.2.0`.
+- Data panel status bar displays CRUD keybindings.
 
-### Known Limitations
-
-- CRUD belum menggunakan parameterized query.
-- Update/delete membutuhkan primary key tunggal.
-- PostgreSQL schema support masih fokus `public`.
-- Belum ada automated integration tests.
-
-## [0.1.0]
+## [0.1.0] - 2026-04-15
 
 ### Added
 
-- Browse database SQLite, PostgreSQL, dan MySQL.
-- Connect screen.
-- Table browser.
-- Data panel dengan pagination sederhana.
-- Search/filter rows.
-- Custom SQL query.
-- Export CSV.
-- Multi-tab connections.
+- SQLite, PostgreSQL, and MySQL database browsing.
+- Interactive connection screen.
+- Table list browser.
+- Data panel with pagination and vim-style navigation.
+- Real-time row filtering and search.
+- Custom SQL query editor with inline results.
+- CSV export.
+- Multi-tab simultaneous connections.

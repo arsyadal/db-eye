@@ -2,44 +2,60 @@
 
 <img src="logo.svg" alt="DB-Eye Logo" width="360" />
 
+**English** | [Bahasa Indonesia](README.id.md)
+
 [![crates.io](https://img.shields.io/crates/v/db-eye.svg)](https://crates.io/crates/db-eye)
 [![CI](https://github.com/arsyadal/db-eye/actions/workflows/ci.yml/badge.svg)](https://github.com/arsyadal/db-eye/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Terminal UI database browser. SQLite, PostgreSQL, MySQL.
+Fast, lightweight Terminal UI database browser for SQLite, PostgreSQL, and MySQL.
 
 ![DB-Eye demo](docs/demo.gif)
-
 ## Install
+
+Install globally via Cargo:
 
 ```bash
 cargo install db-eye
 ```
 
-Requires a Rust toolchain that supports edition 2024 (rustc 1.85+). Runs on macOS, Linux, and Windows.
+Requires a Rust toolchain supporting edition 2024 (rustc 1.85+). Runs on macOS, Linux, and Windows.
+
+Or download pre-compiled standalone binaries from [GitHub Releases](https://github.com/arsyadal/db-eye/releases).
+
+To update an existing installation to the latest version:
+
+```bash
+db-eye update
+# or: cargo install --force db-eye
+```
 
 Or run from source:
 
 ```bash
 cargo run -- ./path/to/file.db
 ```
-
 ## Usage
 
 ```bash
-# Open SQLite file directly
+# Open SQLite file directly (creates file automatically if missing)
 db-eye ./mydb.sqlite
 
-# Open in read-only mode (disables writes/CRUD)
+# Open in read-only mode (enforces hardware/engine-level rejection of writes)
 db-eye --read-only ./mydb.sqlite
 
 # Launch without args → connect screen
 db-eye
 
-# Show usage
+# Check for and install updates
+db-eye update
+
+# Show version
+db-eye --version
+
+# Show usage help
 db-eye --help
 ```
-
 ## Connect Screen
 
 | Key | Action |
@@ -127,13 +143,15 @@ Saved connections (`Ctrl+S`) persist to a local JSON file — passwords are neve
 ### SQL Query Input
 | Key | Action |
 |-----|--------|
-| `Enter` | Run query |
+| `Enter` | Run query (auto-refreshes schema if DDL like `CREATE TABLE` is executed) |
+| `←` / `→` | Move cursor within query text |
+| `Home` / `End` | Jump to start / end of query |
+| `Backspace` / `Delete` | Delete character before / under cursor |
 | `Ctrl+E` | Explain query plan |
 | `Ctrl+S` | Save query as a Named Query |
 | `Ctrl+N` | Open Saved Named Queries list |
-| `↑` / `↓` | Navigate history |
+| `↑` / `↓` | Cycle query history |
 | `Esc` | Close input |
-
 ### Query History
 | Key | Action |
 |-----|--------|
@@ -154,12 +172,12 @@ Saved connections (`Ctrl+S`) persist to a local JSON file — passwords are neve
 
 ## Safety
 
-Use `--read-only` / `-r` to disable write operations. In read-only mode:
+Use `--read-only` / `-r` to enforce hardware- and engine-level read-only protection. In read-only mode:
 
-- Insert/update/delete shortcuts are blocked.
-- Insert/update/delete confirmation screens cannot execute.
-- Custom SQL is limited to read-style statements such as `SELECT`, `WITH`, `EXPLAIN`, `SHOW`, and `DESCRIBE`.
-
+- SQLite connections automatically enforce `?mode=ro`.
+- Insert, update, and delete shortcuts and confirmation screens are blocked.
+- Custom SQL is inspected by a robust token scanner blocking mutating statements, write CTEs (`WITH ... INSERT ... RETURNING`), multi-statement injection (`SELECT 1; DROP TABLE users;`), `SELECT ... INTO`, and mutating pragmas (`PRAGMA ... = ...`).
+- Safe inspection pragmas like `PRAGMA table_info(...)` remain permitted.
 ## Connection Strings
 
 | DB | Format |
@@ -171,15 +189,18 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 ## Features
 
 - Browse tables and data with vim-style navigation
-- Real-time search across all columns
-- Custom SQL queries with results displayed inline
+- Automatic SQLite database creation if the file does not exist
+- Self-update via `db-eye update` and non-blocking background update notifications
+- Real-time search across all columns with match count
+- Custom SQL queries with results displayed inline and schema auto-refresh
+- SQL query editor cursor navigation and full inline editing
 - Query execution duration in status bar
-- In-memory query history with edit/re-run actions
+- Persistent query history across sessions (`~/.config/db-eye/history.json`)
 - Insert, update, and delete rows from the data panel
 - Composite primary key support for update/delete
-- Read-only mode for safer browsing
-- Friendly database errors for constraints, permissions, and SQL syntax
-- Data-type validation for CRUD and inline edits
+- Read-only mode for safer browsing with hardware-level rejection
+- Friendly database error descriptions mapping native SQLSTATE and driver error codes
+- Data-type validation for CRUD and inline edits, separating exact decimal from float
 - Distinct NULL display (`<NULL>`) so string `NULL` remains editable as text
 - CRUD/edit forms treat empty input or `\\null` as database NULL
 - Foreign-key dropdown (`←`/`→` to pick a value) in insert/update forms
@@ -188,14 +209,14 @@ Use `--read-only` / `-r` to disable write operations. In read-only mode:
 - Import CSV into an existing table with column mapping and data preview
 - Multiple simultaneous DB connections (tabs)
 - PostgreSQL/MySQL: connect via form flow or full connection URL
-- PostgreSQL: connect to server → pick database from list
+- PostgreSQL: connect to server → pick database from list → schema selector
 - Auto column width fitting
 - Monochrome TUI — works in any terminal
 - Views listed alongside tables, labeled `(view)`
 - Column type shown with declared length/precision (e.g. `varchar(255)`, `numeric(10,2)`)
 - Required and default-value indicators on insert/update form fields
 - Table stats popup (`s`): index list and approximate on-disk size
-
+- Manual connection reconnect (`Ctrl+R`) recovering dropped connections in place
 ## Versioning
 
 DB-Eye adheres to [Semantic Versioning 2.0.0](https://semver.org/):
