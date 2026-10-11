@@ -6,7 +6,7 @@ description = "Terminal UI database browser for SQLite, PostgreSQL, MySQL, and M
 license = "MIT"
 repository = "https://github.com/arsyadal/db-eye"
 homepage = "https://github.com/arsyadal/db-eye"
-keywords = ["database", "tui", "sqlite", "postgresql", "mysql", "mssql"]
+keywords = ["database", "tui", "sqlite", "postgresql", "mssql"]
 categories = ["command-line-utilities", "database"]
 readme = "README.md"
 
