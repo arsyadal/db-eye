@@ -30,15 +30,19 @@ impl App {
         match key {
             KeyCode::Left => {
                 self.query_cursor = self.query_cursor.saturating_sub(1);
+                self.update_query_suggestions();
             }
             KeyCode::Right => {
                 self.query_cursor = (self.query_cursor + 1).min(self.query_input.len());
+                self.update_query_suggestions();
             }
             KeyCode::Home => {
                 self.query_cursor = 0;
+                self.update_query_suggestions();
             }
             KeyCode::End => {
                 self.query_cursor = self.query_input.len();
+                self.update_query_suggestions();
             }
             KeyCode::Up => {
                 if let Some(tab) = self.current_tab_mut()
@@ -52,6 +56,7 @@ impl App {
                     if let Some(history_sql) = tab.query_history.get(new_index) {
                         self.query_input = history_sql.clone();
                         self.query_cursor = self.query_input.len();
+                        self.update_query_suggestions();
                     }
                 }
             }
@@ -69,6 +74,7 @@ impl App {
                         self.query_input.clear();
                         self.query_cursor = 0;
                     }
+                    self.update_query_suggestions();
                 }
             }
             KeyCode::Char('e') if modifiers.contains(KeyModifiers::CONTROL) => {
@@ -97,12 +103,23 @@ impl App {
                 self.named_query_index = 0;
                 self.screen = Screen::NamedQueriesList;
             }
+            KeyCode::Tab if !self.query_suggestions.is_empty() => {
+                let sug = self.query_suggestions[self.query_suggestion_index].clone();
+                self.apply_query_suggestion(&sug);
+            }
+            KeyCode::BackTab if !self.query_suggestions.is_empty() => {
+                self.query_suggestion_index = self
+                    .query_suggestion_index
+                    .checked_sub(1)
+                    .unwrap_or(self.query_suggestions.len().saturating_sub(1));
+            }
             KeyCode::Char(c) => {
                 self.query_input.insert(self.query_cursor, c);
                 self.query_cursor += 1;
                 if let Some(tab) = self.current_tab_mut() {
                     tab.history_index = None;
                 }
+                self.update_query_suggestions();
             }
             KeyCode::Backspace => {
                 if self.query_cursor > 0 {
@@ -112,6 +129,7 @@ impl App {
                 if let Some(tab) = self.current_tab_mut() {
                     tab.history_index = None;
                 }
+                self.update_query_suggestions();
             }
             KeyCode::Delete => {
                 if self.query_cursor < self.query_input.len() {
@@ -120,8 +138,10 @@ impl App {
                 if let Some(tab) = self.current_tab_mut() {
                     tab.history_index = None;
                 }
+                self.update_query_suggestions();
             }
             KeyCode::Enter => {
+                self.query_suggestions.clear();
                 let sql = self.query_input.trim().to_string();
                 if sql.is_empty() {
                     self.screen = Screen::Main;
@@ -131,6 +151,7 @@ impl App {
                 self.screen = Screen::Main;
             }
             KeyCode::Esc => {
+                self.query_suggestions.clear();
                 if let Some(tab) = self.current_tab_mut() {
                     tab.history_index = None;
                 }
@@ -138,6 +159,149 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    pub fn update_query_suggestions(&mut self) {
+        if self.query_input.is_empty() {
+            self.query_suggestions.clear();
+            self.query_suggestion_index = 0;
+            return;
+        }
+
+        let cursor = self.query_cursor.min(self.query_input.len());
+        let before_cursor = &self.query_input[..cursor];
+
+        let mut word_start = before_cursor.len();
+        let bytes = before_cursor.as_bytes();
+        while word_start > 0 {
+            let b = bytes[word_start - 1];
+            if b.is_ascii_alphanumeric() || b == b'_' {
+                word_start -= 1;
+            } else {
+                break;
+            }
+        }
+
+        let prefix = &before_cursor[word_start..];
+        if prefix.is_empty() {
+            self.query_suggestions.clear();
+            self.query_suggestion_index = 0;
+            return;
+        }
+
+        let prefix_lower = prefix.to_lowercase();
+        let mut candidates = Vec::new();
+
+        // 1. Table and view names from current tab
+        if let Some(tab) = self.current_tab() {
+            for t in &tab.tables {
+                if t.name.to_lowercase().starts_with(&prefix_lower)
+                    && !candidates
+                        .iter()
+                        .any(|c: &String| c.eq_ignore_ascii_case(&t.name))
+                {
+                    candidates.push(t.name.clone());
+                }
+            }
+            if let Some(result) = &tab.result {
+                for col in &result.columns {
+                    if col.to_lowercase().starts_with(&prefix_lower)
+                        && !candidates
+                            .iter()
+                            .any(|c: &String| c.eq_ignore_ascii_case(col))
+                    {
+                        candidates.push(col.clone());
+                    }
+                }
+            }
+        }
+
+        // 2. Common SQL Keywords
+        const SQL_KEYWORDS: &[&str] = &[
+            "SELECT",
+            "FROM",
+            "WHERE",
+            "JOIN",
+            "LEFT JOIN",
+            "INNER JOIN",
+            "ON",
+            "GROUP BY",
+            "ORDER BY",
+            "HAVING",
+            "LIMIT",
+            "OFFSET",
+            "INSERT INTO",
+            "VALUES",
+            "UPDATE",
+            "SET",
+            "DELETE FROM",
+            "CREATE TABLE",
+            "DROP TABLE",
+            "ALTER TABLE",
+            "AND",
+            "OR",
+            "NOT",
+            "IN",
+            "LIKE",
+            "ILIKE",
+            "BETWEEN",
+            "IS NULL",
+            "IS NOT NULL",
+            "AS",
+            "DISTINCT",
+            "COUNT",
+            "SUM",
+            "AVG",
+            "MIN",
+            "MAX",
+            "EXPLAIN",
+            "PRAGMA",
+            "SHOW TABLES",
+            "DESCRIBE",
+        ];
+
+        for kw in SQL_KEYWORDS {
+            if kw.to_lowercase().starts_with(&prefix_lower)
+                && !candidates
+                    .iter()
+                    .any(|c: &String| c.eq_ignore_ascii_case(kw))
+            {
+                candidates.push(kw.to_string());
+            }
+        }
+
+        candidates.truncate(6);
+        self.query_suggestions = candidates;
+        if self.query_suggestion_index >= self.query_suggestions.len() {
+            self.query_suggestion_index = 0;
+        }
+    }
+
+    pub fn apply_query_suggestion(&mut self, suggestion: &str) {
+        let cursor = self.query_cursor.min(self.query_input.len());
+        let before_cursor = &self.query_input[..cursor];
+
+        let mut word_start = before_cursor.len();
+        let bytes = before_cursor.as_bytes();
+        while word_start > 0 {
+            let b = bytes[word_start - 1];
+            if b.is_ascii_alphanumeric() || b == b'_' {
+                word_start -= 1;
+            } else {
+                break;
+            }
+        }
+
+        let mut new_input = String::new();
+        new_input.push_str(&self.query_input[..word_start]);
+        new_input.push_str(suggestion);
+        new_input.push(' ');
+        let new_cursor = new_input.len();
+        new_input.push_str(&self.query_input[cursor..]);
+
+        self.query_input = new_input;
+        self.query_cursor = new_cursor;
+        self.update_query_suggestions();
     }
 
     pub(super) async fn execute_current_query(&mut self, sql: String) {
@@ -675,5 +839,47 @@ mod tests {
 
         app.tabs[0].db.pool.close().await;
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn test_query_suggestions_and_tab_autocomplete() {
+        let mut app = App::new(false);
+        app.screen = Screen::Query;
+
+        // Type "sel"
+        for c in "sel".chars() {
+            app.handle_query(KeyCode::Char(c), KeyModifiers::NONE).await;
+        }
+        assert_eq!(app.query_input, "sel");
+        assert!(!app.query_suggestions.is_empty());
+        assert_eq!(app.query_suggestions[0], "SELECT");
+
+        // Press Tab -> autocompletes to "SELECT "
+        app.handle_query(KeyCode::Tab, KeyModifiers::NONE).await;
+        assert_eq!(app.query_input, "SELECT ");
+        assert_eq!(app.query_cursor, 7);
+
+        // Add dummy table to active tab
+        let db = DbClient::connect("sqlite::memory:").await.unwrap();
+        let mut tab = Tab::new("test".to_string(), "sqlite::memory:".to_string(), db);
+        tab.tables = vec![crate::db::TableEntry {
+            name: "users".to_string(),
+            is_view: false,
+        }];
+        app.tabs.push(tab);
+        app.active_tab = 0;
+
+        // Type "* FROM u"
+        for c in "* FROM u".chars() {
+            app.handle_query(KeyCode::Char(c), KeyModifiers::NONE).await;
+        }
+        assert_eq!(app.query_input, "SELECT * FROM u");
+        assert!(!app.query_suggestions.is_empty());
+        // First candidate should be table "users"
+        assert_eq!(app.query_suggestions[0], "users");
+
+        // Press Tab -> autocompletes to "SELECT * FROM users "
+        app.handle_query(KeyCode::Tab, KeyModifiers::NONE).await;
+        assert_eq!(app.query_input, "SELECT * FROM users ");
     }
 }

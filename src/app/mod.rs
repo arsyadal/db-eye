@@ -80,6 +80,8 @@ pub struct App {
     pub save_query_input: String,
     pub named_query_index: usize,
     pub new_db_input: String,
+    pub query_suggestions: Vec<String>,
+    pub query_suggestion_index: usize,
     pub update_notice: Option<String>,
     pub update_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
 }
@@ -130,6 +132,8 @@ impl App {
             save_query_input: String::new(),
             named_query_index: 0,
             new_db_input: String::new(),
+            query_suggestions: vec![],
+            query_suggestion_index: 0,
             update_notice: cached_update,
             update_rx: Some(update_rx),
         };

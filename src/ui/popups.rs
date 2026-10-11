@@ -3,28 +3,78 @@ use crate::app::App;
 use crate::app::format_duration_ms;
 use ratatui::{
     Frame,
-    layout::{Constraint, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
 };
 
 pub fn draw_query_popup(f: &mut Frame, app: &App) {
-    let area = centered_rect(75, 5, f.area());
+    let has_suggestions = !app.query_suggestions.is_empty();
+    let height = if has_suggestions { 6 } else { 5 };
+    let area = centered_rect(75, height, f.area());
     f.render_widget(Clear, area);
 
-    // Prefix ": " takes 2 chars, borders take 2 chars -> area.width.saturating_sub(4)
-    let max_w = area.width.saturating_sub(4) as usize;
-    let (visible, cursor_x) = scroll_input_view(&app.query_input, app.query_cursor, max_w);
+    if has_suggestions {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Length(3)])
+            .split(area);
 
-    f.render_widget(
-        Paragraph::new(format!(": {}", visible))
-            .block(Block::default().borders(Borders::ALL).title(
-            " SQL Query — Enter: run  Ctrl+E: explain  Ctrl+S: save  Ctrl+N: load  Esc: cancel ",
-        )),
-        area,
-    );
-    f.set_cursor_position((area.x + 3 + cursor_x, area.y + 1));
+        let max_w = chunks[0].width.saturating_sub(4) as usize;
+        let (visible, cursor_x) = scroll_input_view(&app.query_input, app.query_cursor, max_w);
+
+        let title =
+            " SQL Query — Enter: run  Tab: complete  Ctrl+E: explain  Ctrl+S: save  Esc: cancel ";
+        f.render_widget(
+            Paragraph::new(format!(": {}", visible))
+                .block(Block::default().borders(Borders::ALL).title(title)),
+            chunks[0],
+        );
+        f.set_cursor_position((chunks[0].x + 3 + cursor_x, chunks[0].y + 1));
+
+        let mut spans = vec![Span::styled(
+            " Suggestions (Tab): ",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )];
+        for (i, sug) in app.query_suggestions.iter().enumerate() {
+            if i > 0 {
+                spans.push(Span::raw(" "));
+            }
+            let is_selected = i == app.query_suggestion_index;
+            let style = if is_selected {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White).bg(Color::DarkGray)
+            };
+            spans.push(Span::styled(format!(" {sug} "), style));
+        }
+
+        f.render_widget(
+            Paragraph::new(Line::from(spans)).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::DarkGray)),
+            ),
+            chunks[1],
+        );
+    } else {
+        let max_w = area.width.saturating_sub(4) as usize;
+        let (visible, cursor_x) = scroll_input_view(&app.query_input, app.query_cursor, max_w);
+
+        f.render_widget(
+            Paragraph::new(format!(": {}", visible)).block(Block::default().borders(Borders::ALL).title(
+                " SQL Query — Enter: run  Ctrl+E: explain  Ctrl+S: save  Ctrl+N: load  Esc: cancel ",
+            )),
+            area,
+        );
+        f.set_cursor_position((area.x + 3 + cursor_x, area.y + 1));
+    }
 }
 
 pub fn draw_query_history_popup(f: &mut Frame, app: &App) {
