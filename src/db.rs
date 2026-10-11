@@ -263,7 +263,7 @@ pub fn parse_mssql_url(url: &str) -> Result<tiberius::Config, String> {
         None => (stripped, "master"),
     };
 
-    let (auth, host_port) = match auth_host.split_once('@') {
+    let (auth, host_port) = match auth_host.rsplit_once('@') {
         Some((a, hp)) => (Some(a), hp),
         None => (None, auth_host),
     };
@@ -2000,6 +2000,12 @@ mod tests {
 
         let conf3 = parse_mssql_url("localhost:1433").unwrap();
         assert_eq!(conf3.get_addr(), "localhost:1433");
+    }
+
+    #[test]
+    fn test_parse_mssql_url_with_at_in_password() {
+        let conf = parse_mssql_url("mssql://sa:Password@123@localhost:1433/master").unwrap();
+        assert_eq!(conf.get_addr(), "localhost:1433");
     }
 
     #[test]
