@@ -327,6 +327,19 @@ impl App {
     }
 
     async fn connect_sqlite(&mut self, path: String) {
+        if path != ":memory:" && path != "sqlite::memory:" && !self.read_only {
+            let fs_path = path.strip_prefix("sqlite:").unwrap_or(&path);
+            let fs_path = fs_path.split('?').next().unwrap_or(fs_path);
+            let path_obj = std::path::Path::new(fs_path);
+            if let Some(parent) = path_obj.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if !path_obj.exists() {
+                let _ = std::fs::File::create(path_obj);
+            }
+        }
         let url = self.apply_sqlite_mode(&path);
         match DbClient::connect(&url).await {
             Ok(client) => {

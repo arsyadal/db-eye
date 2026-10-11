@@ -193,7 +193,22 @@ impl DbClient {
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
         sqlx::any::install_default_drivers();
         let normalized = match DbType::from_url(url) {
-            DbType::Sqlite => normalize_sqlite_url(url),
+            DbType::Sqlite => {
+                if url != ":memory:" && url != "sqlite::memory:" && !url.contains("mode=ro") {
+                    let fs_path = url.strip_prefix("sqlite:").unwrap_or(url);
+                    let fs_path = fs_path.split('?').next().unwrap_or(fs_path);
+                    let path_obj = std::path::Path::new(fs_path);
+                    if let Some(parent) = path_obj.parent()
+                        && !parent.as_os_str().is_empty()
+                    {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    if !path_obj.exists() {
+                        let _ = std::fs::File::create(path_obj);
+                    }
+                }
+                normalize_sqlite_url(url)
+            }
             _ => url.to_string(),
         };
         let db_type = DbType::from_url(&normalized);
@@ -1329,6 +1344,13 @@ mod tests {
         assert!(path.exists());
         db.pool.close().await;
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_url_relative_paths() {
+        let res1 = DbClient::connect("./test_rel1.sqlite").await;
+        println!("res1: {:?}", res1.err());
+        let _ = std::fs::remove_file("./test_rel1.sqlite");
     }
 
     #[test]
