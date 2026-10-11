@@ -31,7 +31,7 @@ jobs:
             bin_name: db-eye
             archive_ext: tar.gz
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
             bin_name: db-eye
             archive_ext: tar.gz
           - target: x86_64-pc-windows-msvc
