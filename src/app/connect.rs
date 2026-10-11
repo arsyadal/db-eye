@@ -198,9 +198,9 @@ impl App {
 
     pub(super) fn connect_help(&self) -> &'static str {
         if self.read_only {
-            "READ-ONLY  |  ←/→: switch DB type  Enter: connect  URL optional"
+            "READ-ONLY  |  ←/→: switch DB type  Enter: connect  (SQLite creates file if missing)  URL optional"
         } else {
-            "←/→: switch DB type  Enter: connect  URL optional"
+            "←/→: switch DB type  Enter: connect  (SQLite creates file if missing)  URL optional"
         }
     }
 
@@ -268,6 +268,34 @@ impl App {
         }
     }
 
+    fn apply_sqlite_mode(&self, path: &str) -> String {
+        if path == ":memory:" || path == "sqlite::memory:" {
+            return path.to_string();
+        }
+        let target_mode = if self.read_only {
+            "mode=ro"
+        } else {
+            "mode=rwc"
+        };
+        let base = if path.starts_with("sqlite:") {
+            path.to_string()
+        } else {
+            format!("sqlite:{}", path)
+        };
+        if let Some(idx) = base.find("mode=") {
+            let after = &base[idx..];
+            let end = after.find('&').map(|e| idx + e).unwrap_or(base.len());
+            let mut res = base[..idx].to_string();
+            res.push_str(target_mode);
+            res.push_str(&base[end..]);
+            res
+        } else if base.contains('?') {
+            format!("{base}&{target_mode}")
+        } else {
+            format!("{base}?{target_mode}")
+        }
+    }
+
     pub async fn connect_path<B: Backend>(&mut self, path: String, terminal: &mut Terminal<B>)
     where
         <B as Backend>::Error: 'static,
@@ -278,14 +306,11 @@ impl App {
     }
 
     async fn connect_sqlite(&mut self, path: String) {
-        let url = if path.starts_with("sqlite:") {
-            path.clone()
-        } else {
-            format!("sqlite:{}", path)
-        };
+        let url = self.apply_sqlite_mode(&path);
         match DbClient::connect(&url).await {
             Ok(client) => {
                 let mut tab = Tab::new(path.clone(), url.clone(), client);
+                self.seed_tab_history(&mut tab);
                 match tab.db.list_tables(None).await {
                     Ok(tables) => tab.tables = tables,
                     Err(e) => {
@@ -357,6 +382,7 @@ impl App {
         match DbClient::connect(&url).await {
             Ok(client) => {
                 let mut tab = Tab::new(display.clone(), url.clone(), client);
+                self.seed_tab_history(&mut tab);
 
                 if tab.db.db_type == crate::db::DbType::Postgres {
                     match tab.db.list_schemas().await {
@@ -430,6 +456,7 @@ impl App {
         match DbClient::connect(&url).await {
             Ok(client) => {
                 let mut tab = Tab::new(display.clone(), url.clone(), client);
+                self.seed_tab_history(&mut tab);
                 tab.server_info = Some((sc_form, sc_db_type));
 
                 if tab.db.db_type == crate::db::DbType::Postgres {
@@ -618,5 +645,53 @@ impl App {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn smoke_test_sqlite_autocreate_ddl_and_list_tables() {
+        let path = std::env::temp_dir().join(format!("db-eye-smoke-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        assert!(!path.exists());
+
+        let mut app = App::new(false);
+        app.connect_sqlite(path.to_str().unwrap().to_string()).await;
+
+        assert_eq!(app.tabs.len(), 1);
+        assert!(path.exists());
+        assert_eq!(app.tabs[0].tables.len(), 0);
+
+        let query = "CREATE TABLE test (id INT, price DECIMAL(10,2), name TEXT);".to_string();
+        app.execute_current_query(query).await;
+
+        let tables = app.tabs[0]
+            .db
+            .list_tables(app.tabs[0].current_schema())
+            .await
+            .unwrap();
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].name, "test");
+        assert_eq!(app.tabs[0].tables.len(), 1);
+        assert_eq!(app.tabs[0].tables[0].name, "test");
+
+        // Insert and verify decimal precision
+        let insert_q =
+            "INSERT INTO test (id, price, name) VALUES (1, 12.34, 'Gadget');".to_string();
+        app.execute_current_query(insert_q).await;
+
+        let select_res = app.tabs[0]
+            .db
+            .execute_query("SELECT price FROM test WHERE id = 1;")
+            .await
+            .unwrap();
+        assert_eq!(select_res.rows.len(), 1);
+        assert_eq!(select_res.rows[0][0], "12.34");
+
+        app.tabs[0].db.pool.close().await;
+        let _ = std::fs::remove_file(&path);
     }
 }

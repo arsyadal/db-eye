@@ -3,7 +3,7 @@ use crate::db::{DbClient, DbType, format_db_error};
 use crossterm::event::{KeyCode, KeyModifiers};
 use std::time::Instant;
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct QueryHistoryEntry {
     pub sql: String,
     pub rows: Option<usize>,
@@ -28,23 +28,30 @@ impl QueryHistoryEntry {
 impl App {
     pub(super) async fn handle_query(&mut self, key: KeyCode, modifiers: KeyModifiers) {
         match key {
+            KeyCode::Left => {
+                self.query_cursor = self.query_cursor.saturating_sub(1);
+            }
+            KeyCode::Right => {
+                self.query_cursor = (self.query_cursor + 1).min(self.query_input.len());
+            }
+            KeyCode::Home => {
+                self.query_cursor = 0;
+            }
+            KeyCode::End => {
+                self.query_cursor = self.query_input.len();
+            }
             KeyCode::Up => {
                 if let Some(tab) = self.current_tab_mut()
                     && !tab.query_history.is_empty()
                 {
                     let new_index = match tab.history_index {
-                        Some(idx) => {
-                            if idx > 0 {
-                                idx - 1
-                            } else {
-                                0
-                            }
-                        }
+                        Some(idx) => idx.saturating_sub(1),
                         None => tab.query_history.len().saturating_sub(1),
                     };
                     tab.history_index = Some(new_index);
                     if let Some(history_sql) = tab.query_history.get(new_index) {
                         self.query_input = history_sql.clone();
+                        self.query_cursor = self.query_input.len();
                     }
                 }
             }
@@ -56,15 +63,19 @@ impl App {
                         let new_index = idx + 1;
                         tab.history_index = Some(new_index);
                         self.query_input = tab.query_history[new_index].clone();
+                        self.query_cursor = self.query_input.len();
                     } else {
                         tab.history_index = None;
                         self.query_input.clear();
+                        self.query_cursor = 0;
                     }
                 }
             }
             KeyCode::Char('e') if modifiers.contains(KeyModifiers::CONTROL) => {
                 let sql = self.query_input.trim().to_string();
-                if !sql.is_empty() && let Some(tab) = self.current_tab() {
+                if !sql.is_empty()
+                    && let Some(tab) = self.current_tab()
+                {
                     let prefix = match tab.db.db_type {
                         DbType::Sqlite => "EXPLAIN QUERY PLAN ",
                         DbType::Postgres | DbType::Mysql => "EXPLAIN ",
@@ -87,13 +98,25 @@ impl App {
                 self.screen = Screen::NamedQueriesList;
             }
             KeyCode::Char(c) => {
-                self.query_input.push(c);
+                self.query_input.insert(self.query_cursor, c);
+                self.query_cursor += 1;
                 if let Some(tab) = self.current_tab_mut() {
                     tab.history_index = None;
                 }
             }
             KeyCode::Backspace => {
-                self.query_input.pop();
+                if self.query_cursor > 0 {
+                    self.query_cursor -= 1;
+                    self.query_input.remove(self.query_cursor);
+                }
+                if let Some(tab) = self.current_tab_mut() {
+                    tab.history_index = None;
+                }
+            }
+            KeyCode::Delete => {
+                if self.query_cursor < self.query_input.len() {
+                    self.query_input.remove(self.query_cursor);
+                }
                 if let Some(tab) = self.current_tab_mut() {
                     tab.history_index = None;
                 }
@@ -117,7 +140,7 @@ impl App {
         }
     }
 
-    async fn execute_current_query(&mut self, sql: String) {
+    pub(super) async fn execute_current_query(&mut self, sql: String) {
         if self.read_only && !DbClient::is_read_only_sql(&sql) {
             self.read_only_block();
             return;
@@ -159,6 +182,10 @@ impl App {
                     history.duration_ms = duration_ms;
                     history.success = true;
                     self.status = format!("{} in {}", msg, format_duration_ms(duration_ms));
+
+                    if let Ok(tables) = tab.db.list_tables(tab.current_schema()).await {
+                        tab.tables = tables;
+                    }
                 }
                 Err(e) => {
                     let duration_ms = started.elapsed().as_millis();
@@ -172,6 +199,7 @@ impl App {
             if self.query_history.len() > 100 {
                 self.query_history.truncate(100);
             }
+            self.save_persisted_query_history();
         }
     }
 
@@ -188,6 +216,7 @@ impl App {
             KeyCode::Enter => {
                 if let Some(entry) = self.query_history.get(self.history_index) {
                     self.query_input = entry.sql.clone();
+                    self.query_cursor = self.query_input.len();
                     self.screen = Screen::Query;
                     self.status = "Editing query from history".into();
                 }
@@ -247,6 +276,66 @@ pub struct NamedQuery {
 }
 
 impl App {
+    pub fn history_config_path(&self) -> Option<std::path::PathBuf> {
+        #[cfg(target_os = "windows")]
+        let base = std::env::var("APPDATA").ok().map(std::path::PathBuf::from);
+        #[cfg(not(target_os = "windows"))]
+        let base = std::env::var("HOME")
+            .ok()
+            .map(|h| std::path::PathBuf::from(h).join(".config"));
+
+        base.map(|b| b.join("db-eye").join("history.json"))
+    }
+
+    pub fn load_persisted_query_history(&mut self) {
+        if let Some(path) = self.history_config_path()
+            && path.exists()
+            && let Ok(content) = std::fs::read_to_string(&path)
+            && let Ok(history) = serde_json::from_str::<Vec<QueryHistoryEntry>>(&content)
+        {
+            self.query_history = history;
+            if self.query_history.len() > 100 {
+                self.query_history.truncate(100);
+            }
+            let sql_strings: Vec<String> = self
+                .query_history
+                .iter()
+                .rev()
+                .map(|h| h.sql.clone())
+                .collect();
+            if let Some(tab) = self.current_tab_mut() {
+                tab.query_history = sql_strings;
+            }
+            return;
+        }
+        self.query_history = vec![];
+    }
+
+    pub fn save_persisted_query_history(&self) {
+        if let Some(path) = self.history_config_path() {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let to_save: &[QueryHistoryEntry] = if self.query_history.len() > 100 {
+                &self.query_history[..100]
+            } else {
+                &self.query_history
+            };
+            if let Ok(content) = serde_json::to_string_pretty(to_save) {
+                let _ = std::fs::write(&path, content);
+            }
+        }
+    }
+
+    pub(super) fn seed_tab_history(&self, tab: &mut crate::app::Tab) {
+        tab.query_history = self
+            .query_history
+            .iter()
+            .rev()
+            .map(|h| h.sql.clone())
+            .collect();
+    }
+
     pub fn queries_config_path(&self) -> Option<std::path::PathBuf> {
         #[cfg(target_os = "windows")]
         let base = std::env::var("APPDATA").ok().map(std::path::PathBuf::from);
@@ -296,7 +385,10 @@ impl App {
                     if let Some(pos) = self.named_queries.iter().position(|q| q.name == name) {
                         self.named_queries[pos].sql = sql;
                     } else {
-                        self.named_queries.push(NamedQuery { name: name.clone(), sql });
+                        self.named_queries.push(NamedQuery {
+                            name: name.clone(),
+                            sql,
+                        });
                     }
                     self.save_named_queries();
                     self.status = format!("Query saved as '{}'", name);
@@ -339,11 +431,14 @@ impl App {
             KeyCode::Enter => {
                 if let Some(q) = self.named_queries.get(self.named_query_index) {
                     self.query_input = q.sql.clone();
+                    self.query_cursor = self.query_input.len();
                     self.screen = Screen::Query;
                     self.status = format!("Loaded named query '{}'", q.name);
                 }
             }
-            KeyCode::Delete | KeyCode::Backspace if self.named_query_index < self.named_queries.len() => {
+            KeyCode::Delete | KeyCode::Backspace
+                if self.named_query_index < self.named_queries.len() =>
+            {
                 let removed = self.named_queries.remove(self.named_query_index);
                 self.save_named_queries();
                 self.status = format!("Deleted named query '{}'", removed.name);
@@ -380,6 +475,19 @@ mod tests {
         ));
         assert!(DbClient::is_read_only_sql("EXPLAIN SELECT * FROM users"));
         assert!(DbClient::is_read_only_sql("SHOW TABLES"));
+        assert!(DbClient::is_read_only_sql("PRAGMA table_info(users)"));
+        assert!(DbClient::is_read_only_sql(
+            "SELECT 'INSERT' AS op FROM users"
+        ));
+        assert!(DbClient::is_read_only_sql(
+            "SELECT \"DELETE\" AS op FROM users"
+        ));
+        assert!(DbClient::is_read_only_sql(
+            "/* comment with INSERT */ SELECT * FROM users"
+        ));
+        assert!(DbClient::is_read_only_sql(
+            "-- line comment INSERT\nSELECT * FROM users"
+        ));
     }
 
     #[test]
@@ -388,6 +496,12 @@ mod tests {
         assert!(!DbClient::is_read_only_sql("UPDATE users SET name = 'Ada'"));
         assert!(!DbClient::is_read_only_sql("delete from users"));
         assert!(!DbClient::is_read_only_sql("drop table users"));
+        assert!(!DbClient::is_read_only_sql(
+            "WITH ins AS (INSERT INTO users VALUES (1) RETURNING *) SELECT * FROM ins"
+        ));
+        assert!(!DbClient::is_read_only_sql("SELECT 1; DROP TABLE users;"));
+        assert!(!DbClient::is_read_only_sql("SELECT * INTO copy FROM users"));
+        assert!(!DbClient::is_read_only_sql("PRAGMA foreign_keys = OFF"));
     }
 
     #[tokio::test]
@@ -395,17 +509,26 @@ mod tests {
         let mut app = App::new(false);
         app.screen = Screen::Query;
         app.query_input = "SELECT * FROM users".to_string();
-        
+
         let db = DbClient::connect("sqlite::memory:").await.unwrap();
-        app.tabs.push(Tab::new("sqlite::memory:".to_string(), "sqlite::memory:".to_string(), db));
+        app.tabs.push(Tab::new(
+            "sqlite::memory:".to_string(),
+            "sqlite::memory:".to_string(),
+            db,
+        ));
         app.active_tab = 0;
-        
+
         // Execute Ctrl+E
-        app.handle_query(KeyCode::Char('e'), KeyModifiers::CONTROL).await;
-        
+        app.handle_query(KeyCode::Char('e'), KeyModifiers::CONTROL)
+            .await;
+
         // It should try to execute "EXPLAIN QUERY PLAN SELECT * FROM users"
         // and fail with "no such table: users" or similar, proving it prepended the explain prefix
-        assert!(app.query_history.iter().any(|h| h.sql.starts_with("EXPLAIN QUERY PLAN")));
+        assert!(
+            app.query_history
+                .iter()
+                .any(|h| h.sql.starts_with("EXPLAIN QUERY PLAN"))
+        );
     }
 
     #[test]
@@ -434,5 +557,123 @@ mod tests {
         app.named_query_index = 0;
         app.handle_named_queries_list(KeyCode::Delete);
         assert_eq!(app.named_queries.len(), 0);
+    }
+
+    #[test]
+    fn test_persisted_query_history_serialization_and_roundtrip() {
+        let entry = QueryHistoryEntry {
+            sql: "SELECT * FROM users WHERE active = 1".to_string(),
+            rows: Some(42),
+            duration_ms: 15,
+            success: true,
+            error: None,
+        };
+        let serialized = serde_json::to_string(&vec![entry.clone()]).unwrap();
+        let deserialized: Vec<QueryHistoryEntry> = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.len(), 1);
+        assert_eq!(deserialized[0].sql, entry.sql);
+        assert_eq!(deserialized[0].rows, Some(42));
+        assert_eq!(deserialized[0].duration_ms, 15);
+        assert!(deserialized[0].success);
+        assert_eq!(deserialized[0].status_label(), "OK (42 rows)");
+
+        let err_entry = QueryHistoryEntry {
+            sql: "INVALID SQL".to_string(),
+            rows: None,
+            duration_ms: 2,
+            success: false,
+            error: Some("syntax error".to_string()),
+        };
+        assert_eq!(err_entry.status_label(), "ERROR");
+
+        let temp_dir = std::env::temp_dir().join(format!("db-eye-hist-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let hist_file = temp_dir.join("history.json");
+
+        let json = serde_json::to_string_pretty(&vec![entry.clone(), err_entry.clone()]).unwrap();
+        std::fs::write(&hist_file, json).unwrap();
+
+        let read_back = std::fs::read_to_string(&hist_file).unwrap();
+        let loaded: Vec<QueryHistoryEntry> = serde_json::from_str(&read_back).unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].sql, entry.sql);
+        assert_eq!(loaded[1].sql, err_entry.sql);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_query_editor_cursor_navigation() {
+        let mut app = App::new(false);
+        app.screen = Screen::Query;
+
+        for c in "SELECT".chars() {
+            app.handle_query(KeyCode::Char(c), KeyModifiers::NONE).await;
+        }
+        assert_eq!(app.query_input, "SELECT");
+        assert_eq!(app.query_cursor, 6);
+
+        // Move left twice: cursor at index 4 (between E and C)
+        app.handle_query(KeyCode::Left, KeyModifiers::NONE).await;
+        app.handle_query(KeyCode::Left, KeyModifiers::NONE).await;
+        assert_eq!(app.query_cursor, 4);
+
+        // Insert 'X' mid-string -> "SELEXCT"
+        app.handle_query(KeyCode::Char('X'), KeyModifiers::NONE)
+            .await;
+        assert_eq!(app.query_input, "SELEXCT");
+        assert_eq!(app.query_cursor, 5);
+
+        // Backspace removes 'X' -> "SELECT"
+        app.handle_query(KeyCode::Backspace, KeyModifiers::NONE)
+            .await;
+        assert_eq!(app.query_input, "SELECT");
+        assert_eq!(app.query_cursor, 4);
+
+        // Move right -> cursor 5
+        app.handle_query(KeyCode::Right, KeyModifiers::NONE).await;
+        assert_eq!(app.query_cursor, 5);
+
+        // Home -> cursor 0
+        app.handle_query(KeyCode::Home, KeyModifiers::NONE).await;
+        assert_eq!(app.query_cursor, 0);
+
+        // Delete -> removes 'S' -> "ELECT"
+        app.handle_query(KeyCode::Delete, KeyModifiers::NONE).await;
+        assert_eq!(app.query_input, "ELECT");
+        assert_eq!(app.query_cursor, 0);
+
+        // End -> cursor 5
+        app.handle_query(KeyCode::End, KeyModifiers::NONE).await;
+        assert_eq!(app.query_cursor, 5);
+    }
+
+    #[tokio::test]
+    async fn test_auto_refresh_schema_after_ddl() {
+        let mut app = App::new(false);
+        app.screen = Screen::Query;
+
+        let path =
+            std::env::temp_dir().join(format!("db-eye-ddl-test-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+
+        let db = DbClient::connect(path.to_str().unwrap()).await.unwrap();
+        let tab = Tab::new("test".to_string(), path.to_str().unwrap().to_string(), db);
+        app.tabs.push(tab);
+        app.active_tab = 0;
+
+        assert_eq!(app.tabs[0].tables.len(), 0);
+
+        // Execute CREATE TABLE
+        app.query_input = "CREATE TABLE products (id INT, name TEXT)".to_string();
+        app.query_cursor = app.query_input.len();
+        app.handle_query(KeyCode::Enter, KeyModifiers::NONE).await;
+
+        // Schema auto-refresh should have populated tab.tables
+        assert_eq!(app.tabs[0].tables.len(), 1);
+        assert_eq!(app.tabs[0].tables[0].name, "products");
+
+        app.tabs[0].db.pool.close().await;
+        let _ = std::fs::remove_file(&path);
     }
 }

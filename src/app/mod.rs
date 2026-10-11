@@ -9,9 +9,9 @@ mod tabs;
 
 pub use connect::{ConnectForm, DbTypeChoice, SavedConnection, ServerConn};
 pub use crud::{CrudForm, CrudMode, DeleteConfirm};
-pub use export::{ExportForm, ExportFormat, CsvDelimiter};
-pub use import::{ImportForm, ImportDelimiter};
-pub use query::{QueryHistoryEntry, format_duration_ms, NamedQuery};
+pub use export::{CsvDelimiter, ExportForm, ExportFormat};
+pub use import::{ImportDelimiter, ImportForm};
+pub use query::{NamedQuery, QueryHistoryEntry, format_duration_ms};
 pub use tabs::Tab;
 
 use crate::ui;
@@ -58,6 +58,7 @@ pub struct App {
     pub connection_url_input: String,
     pub server_conn: Option<ServerConn>,
     pub query_input: String,
+    pub query_cursor: usize,
     pub search_input: String,
     pub jump_input: String,
     pub multiline_buffer: String,
@@ -97,6 +98,7 @@ impl App {
             connection_url_input: String::new(),
             server_conn: None,
             query_input: String::new(),
+            query_cursor: 0,
             search_input: String::new(),
             jump_input: String::new(),
             multiline_buffer: String::new(),
@@ -119,6 +121,7 @@ impl App {
         };
         app.load_saved_connections();
         app.load_named_queries();
+        app.load_persisted_query_history();
         app
     }
 

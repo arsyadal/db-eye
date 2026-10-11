@@ -50,8 +50,15 @@ pub fn format_db_error(action: &str, error: &sqlx::Error) -> String {
                 ErrorKind::CheckViolation => {
                     format!("{prefix}: value violates a check constraint{constraint}")
                 }
-                ErrorKind::Other => classify_db_message(&prefix, db_error.message()),
-                _ => classify_db_message(&prefix, db_error.message()),
+                _ => {
+                    if let Some(code) = db_error.code()
+                        && let Some(summary) = classify_db_code(code.as_ref())
+                    {
+                        format!("{prefix}: {summary}{constraint} ({})", db_error.message())
+                    } else {
+                        classify_db_message(&prefix, db_error.message())
+                    }
+                }
             }
         }
         sqlx::Error::Io(_) => format!("{prefix}: database connection error ({error})"),
@@ -67,6 +74,39 @@ pub fn format_db_error(action: &str, error: &sqlx::Error) -> String {
         }
         sqlx::Error::Tls(_) => format!("{prefix}: TLS connection failed ({error})"),
         _ => classify_db_message(&prefix, &error.to_string()),
+    }
+}
+
+pub(crate) fn classify_db_code(code: &str) -> Option<&'static str> {
+    match code {
+        // PostgreSQL SQLSTATE codes
+        "23505" => Some("duplicate value violates a unique constraint"),
+        "23503" => Some("foreign key constraint failed; check referenced rows first"),
+        "23502" => Some("required field cannot be NULL"),
+        "23514" => Some("value violates a check constraint"),
+        "42P01" => Some("table or database object not found"),
+        "42703" => Some("column not found"),
+        "42601" => Some("SQL syntax error; check the query text"),
+        "25006" => Some("permission denied or database is read-only"),
+        "28000" | "28P01" => Some("could not connect to database server (authentication failed)"),
+
+        // MySQL error codes
+        "1062" => Some("duplicate value violates a unique constraint"),
+        "1452" => Some("foreign key constraint failed; check referenced rows first"),
+        "1048" => Some("required field cannot be NULL"),
+        "1146" => Some("table or database object not found"),
+        "1054" => Some("column not found"),
+        "1064" => Some("SQL syntax error; check the query text"),
+        "1045" => Some("could not connect to database server (authentication failed)"),
+
+        // SQLite error codes
+        "1555" | "2067" => Some("duplicate value violates a unique constraint"),
+        "787" => Some("foreign key constraint failed; check referenced rows first"),
+        "1299" => Some("required field cannot be NULL"),
+        "1" => Some("SQL syntax error; check the query text"),
+        "8" => Some("permission denied or database is read-only"),
+
+        _ => None,
     }
 }
 
@@ -107,17 +147,31 @@ fn classify_db_message(prefix: &str, message: &str) -> String {
     }
 }
 
+pub(crate) fn normalize_sqlite_url(url: &str) -> String {
+    if url == ":memory:" || url == "sqlite::memory:" {
+        url.to_string()
+    } else if let Some(stripped) = url.strip_prefix("sqlite:") {
+        if stripped.contains("mode=") {
+            url.to_string()
+        } else if stripped.contains('?') {
+            format!("{url}&mode=rwc")
+        } else {
+            format!("{url}?mode=rwc")
+        }
+    } else if url.contains("mode=") {
+        format!("sqlite:{url}")
+    } else if url.contains('?') {
+        format!("sqlite:{url}&mode=rwc")
+    } else {
+        format!("sqlite:{url}?mode=rwc")
+    }
+}
+
 impl DbClient {
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
         sqlx::any::install_default_drivers();
         let normalized = match DbType::from_url(url) {
-            DbType::Sqlite => {
-                if url.starts_with("sqlite:") {
-                    url.to_string()
-                } else {
-                    format!("sqlite:{}", url)
-                }
-            }
+            DbType::Sqlite => normalize_sqlite_url(url),
             _ => url.to_string(),
         };
         let db_type = DbType::from_url(&normalized);
@@ -362,18 +416,204 @@ impl DbClient {
         })
     }
 
-    pub fn is_read_only_sql(sql: &str) -> bool {
-        let sql = sql.trim_start();
-        if sql.is_empty() {
-            return true;
+    fn sanitize_sql(sql: &str) -> Option<String> {
+        let chars: Vec<char> = sql.chars().collect();
+        let len = chars.len();
+        let mut out = String::with_capacity(len);
+        let mut i = 0;
+
+        enum State {
+            Normal,
+            SingleQuote,
+            DoubleQuote,
+            Backtick,
+            LineComment,
+            BlockComment(usize),
         }
-        let sql = sql
-            .trim_start_matches(|c: char| c == '(' || c == ';' || c.is_whitespace())
-            .to_lowercase();
-        matches!(
-            sql.split_whitespace().next(),
-            Some("select" | "with" | "show" | "describe" | "desc" | "explain")
-        )
+
+        let mut state = State::Normal;
+
+        while i < len {
+            let c = chars[i];
+            match state {
+                State::Normal => {
+                    if c == '-' && i + 1 < len && chars[i + 1] == '-' {
+                        state = State::LineComment;
+                        out.push(' ');
+                        out.push(' ');
+                        i += 2;
+                    } else if c == '/' && i + 1 < len && chars[i + 1] == '*' {
+                        state = State::BlockComment(1);
+                        out.push(' ');
+                        out.push(' ');
+                        i += 2;
+                    } else if c == '\'' {
+                        state = State::SingleQuote;
+                        out.push(' ');
+                        i += 1;
+                    } else if c == '"' {
+                        state = State::DoubleQuote;
+                        out.push(' ');
+                        i += 1;
+                    } else if c == '`' {
+                        state = State::Backtick;
+                        out.push(' ');
+                        i += 1;
+                    } else {
+                        out.push(c);
+                        i += 1;
+                    }
+                }
+                State::SingleQuote => {
+                    if c == '\\' && i + 1 < len {
+                        out.push(' ');
+                        out.push(' ');
+                        i += 2;
+                    } else if c == '\'' {
+                        if i + 1 < len && chars[i + 1] == '\'' {
+                            out.push(' ');
+                            out.push(' ');
+                            i += 2;
+                        } else {
+                            state = State::Normal;
+                            out.push(' ');
+                            i += 1;
+                        }
+                    } else {
+                        out.push(' ');
+                        i += 1;
+                    }
+                }
+                State::DoubleQuote => {
+                    if c == '\\' && i + 1 < len {
+                        out.push(' ');
+                        out.push(' ');
+                        i += 2;
+                    } else if c == '"' {
+                        if i + 1 < len && chars[i + 1] == '"' {
+                            out.push(' ');
+                            out.push(' ');
+                            i += 2;
+                        } else {
+                            state = State::Normal;
+                            out.push(' ');
+                            i += 1;
+                        }
+                    } else {
+                        out.push(' ');
+                        i += 1;
+                    }
+                }
+                State::Backtick => {
+                    if c == '`' {
+                        state = State::Normal;
+                        out.push(' ');
+                        i += 1;
+                    } else {
+                        out.push(' ');
+                        i += 1;
+                    }
+                }
+                State::LineComment => {
+                    if c == '\n' {
+                        state = State::Normal;
+                        out.push('\n');
+                    } else {
+                        out.push(' ');
+                    }
+                    i += 1;
+                }
+                State::BlockComment(depth) => {
+                    if c == '/' && i + 1 < len && chars[i + 1] == '*' {
+                        state = State::BlockComment(depth + 1);
+                        out.push(' ');
+                        out.push(' ');
+                        i += 2;
+                    } else if c == '*' && i + 1 < len && chars[i + 1] == '/' {
+                        if depth <= 1 {
+                            state = State::Normal;
+                        } else {
+                            state = State::BlockComment(depth - 1);
+                        }
+                        out.push(' ');
+                        out.push(' ');
+                        i += 2;
+                    } else {
+                        out.push(' ');
+                        i += 1;
+                    }
+                }
+            }
+        }
+
+        match state {
+            State::Normal | State::LineComment => Some(out),
+            _ => None,
+        }
+    }
+
+    pub fn is_read_only_sql(sql: &str) -> bool {
+        let sanitized = match Self::sanitize_sql(sql) {
+            Some(s) => s,
+            None => return false,
+        };
+
+        let mut statements: Vec<&str> = sanitized.split(';').collect();
+        if statements.is_empty() {
+            return false;
+        }
+        if statements
+            .last()
+            .map(|s| s.trim().is_empty())
+            .unwrap_or(false)
+        {
+            statements.pop();
+        }
+        if statements.is_empty() {
+            return false;
+        }
+
+        const ALLOWED_START: &[&str] = &[
+            "SELECT", "WITH", "EXPLAIN", "PRAGMA", "SHOW", "DESCRIBE", "DESC",
+        ];
+        const MUTATING_KEYWORDS: &[&str] = &[
+            "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "REPLACE",
+            "GRANT", "REVOKE", "VACUUM", "INTO",
+        ];
+
+        for stmt in statements {
+            let trimmed = stmt.trim();
+            if trimmed.is_empty() {
+                return false;
+            }
+
+            let words: Vec<String> = stmt
+                .split(|c: char| !c.is_alphanumeric() && c != '_')
+                .filter(|w| !w.is_empty())
+                .map(|w| w.to_uppercase())
+                .collect();
+
+            if words.is_empty() {
+                return false;
+            }
+
+            let first_word = &words[0];
+            if !ALLOWED_START.contains(&first_word.as_str()) {
+                return false;
+            }
+
+            if first_word == "PRAGMA" && stmt.contains('=') {
+                return false;
+            }
+
+            for word in &words {
+                if MUTATING_KEYWORDS.contains(&word.as_str()) {
+                    return false;
+                }
+            }
+        }
+
+        true
     }
 
     pub async fn get_columns(
@@ -787,6 +1027,8 @@ impl ColumnInfo {
         let kind = self.normalized_type();
         if is_integer_type(&kind) {
             "integer | empty/\\null = NULL"
+        } else if is_decimal_type(&kind) {
+            "decimal (e.g. 12.34) | empty/\\null = NULL"
         } else if is_float_type(&kind) {
             "number | empty/\\null = NULL"
         } else if is_bool_type(&kind) {
@@ -825,6 +1067,9 @@ impl ColumnInfo {
         if is_integer_type(&kind) && value.parse::<i64>().is_err() {
             return Err(format!("{} expects an integer", self.name));
         }
+        if is_decimal_type(&kind) && !is_valid_decimal_format(value) {
+            return Err(format!("{} expects a decimal number", self.name));
+        }
         if is_float_type(&kind) && value.parse::<f64>().is_err() {
             return Err(format!("{} expects a number", self.name));
         }
@@ -841,16 +1086,75 @@ impl ColumnInfo {
     }
 }
 
-fn is_integer_type(kind: &str) -> bool {
-    kind.contains("int") || matches!(kind, "serial" | "bigserial" | "smallserial")
+fn base_type_name(kind: &str) -> String {
+    kind.split('(')
+        .next()
+        .unwrap_or(kind)
+        .trim()
+        .to_ascii_lowercase()
 }
 
-fn is_float_type(kind: &str) -> bool {
-    kind.contains("real")
-        || kind.contains("double")
-        || kind.contains("float")
-        || kind.contains("numeric")
-        || kind.contains("decimal")
+fn is_valid_decimal_format(s: &str) -> bool {
+    let s = s.trim();
+    if s.is_empty() {
+        return false;
+    }
+    let s = if let Some(stripped) = s.strip_prefix('+').or_else(|| s.strip_prefix('-')) {
+        stripped
+    } else {
+        s
+    };
+    if s.is_empty() {
+        return false;
+    }
+    let mut has_dot = false;
+    let mut has_digit = false;
+    for c in s.chars() {
+        if c == '.' {
+            if has_dot {
+                return false;
+            }
+            has_dot = true;
+        } else if c.is_ascii_digit() {
+            has_digit = true;
+        } else {
+            return false;
+        }
+    }
+    has_digit
+}
+
+pub(crate) fn is_integer_type(kind: &str) -> bool {
+    let base = base_type_name(kind);
+    matches!(
+        base.as_str(),
+        "int"
+            | "integer"
+            | "tinyint"
+            | "smallint"
+            | "mediumint"
+            | "bigint"
+            | "int2"
+            | "int4"
+            | "int8"
+            | "serial"
+            | "smallserial"
+            | "bigserial"
+            | "year"
+    )
+}
+
+pub(crate) fn is_decimal_type(kind: &str) -> bool {
+    let base = base_type_name(kind);
+    matches!(base.as_str(), "decimal" | "dec" | "numeric" | "fixed")
+}
+
+pub(crate) fn is_float_type(kind: &str) -> bool {
+    let base = base_type_name(kind);
+    matches!(
+        base.as_str(),
+        "real" | "float" | "double" | "double precision" | "float4" | "float8"
+    )
 }
 
 fn is_bool_type(kind: &str) -> bool {
@@ -888,36 +1192,41 @@ fn format_precise_type(
     base.to_string()
 }
 
+fn decode_any_cell(row: &AnyRow, col_idx: usize) -> Option<String> {
+    if let Ok(v) = row.try_get::<String, _>(col_idx) {
+        return Some(v);
+    }
+    if let Ok(v) = row.try_get::<i64, _>(col_idx) {
+        return Some(v.to_string());
+    }
+    if let Ok(v) = row.try_get::<i32, _>(col_idx) {
+        return Some(v.to_string());
+    }
+    if let Ok(v) = row.try_get::<f64, _>(col_idx) {
+        return Some(v.to_string());
+    }
+    if let Ok(v) = row.try_get::<f32, _>(col_idx) {
+        return Some(v.to_string());
+    }
+    if let Ok(v) = row.try_get::<bool, _>(col_idx) {
+        return Some(v.to_string());
+    }
+    if let Ok(v) = row.try_get::<Vec<u8>, _>(col_idx) {
+        return Some(format!("<blob {}b>", v.len()));
+    }
+    None
+}
+
 fn row_cell(row: &AnyRow, i: usize) -> String {
-    row.try_get::<String, _>(i)
-        .or_else(|_| row.try_get::<i64, _>(i).map(|v| v.to_string()))
-        .or_else(|_| row.try_get::<i32, _>(i).map(|v| v.to_string()))
-        .or_else(|_| row.try_get::<i16, _>(i).map(|v| v.to_string()))
-        .or_else(|_| row.try_get::<f64, _>(i).map(|v| v.to_string()))
-        .or_else(|_| row.try_get::<f32, _>(i).map(|v| v.to_string()))
-        .or_else(|_| row.try_get::<bool, _>(i).map(|v| v.to_string()))
-        .or_else(|_| {
-            row.try_get::<Vec<u8>, _>(i)
-                .map(|v| format!("<blob {}b>", v.len()))
-        })
-        .unwrap_or_default()
+    decode_any_cell(row, i).unwrap_or_default()
 }
 
 fn row_to_strings_checked(row: &AnyRow) -> Result<Vec<String>, ()> {
     let mut result = Vec::with_capacity(row.columns().len());
     for i in 0..row.columns().len() {
-        let val = row
-            .try_get::<String, _>(i)
-            .or_else(|_| row.try_get::<i64, _>(i).map(|v| v.to_string()))
-            .or_else(|_| row.try_get::<f64, _>(i).map(|v| v.to_string()))
-            .or_else(|_| row.try_get::<bool, _>(i).map(|v| v.to_string()))
-            .or_else(|_| {
-                row.try_get::<Vec<u8>, _>(i)
-                    .map(|v| format!("<blob {}b>", v.len()))
-            });
-        match val {
-            Ok(v) => result.push(v),
-            Err(_) => return Err(()),
+        match decode_any_cell(row, i) {
+            Some(v) => result.push(v),
+            None => return Err(()),
         }
     }
     Ok(result)
@@ -925,24 +1234,7 @@ fn row_to_strings_checked(row: &AnyRow) -> Result<Vec<String>, ()> {
 
 fn row_to_strings(row: &AnyRow) -> Vec<String> {
     (0..row.columns().len())
-        .map(|i| {
-            row.try_get::<String, _>(i)
-                .or_else(|_| row.try_get::<i64, _>(i).map(|v| v.to_string()))
-                .or_else(|_| {
-                    row.try_get::<f64, _>(i).map(|v| {
-                        format!("{:.4}", v)
-                            .trim_end_matches('0')
-                            .trim_end_matches('.')
-                            .to_string()
-                    })
-                })
-                .or_else(|_| row.try_get::<bool, _>(i).map(|v| v.to_string()))
-                .or_else(|_| {
-                    row.try_get::<Vec<u8>, _>(i)
-                        .map(|v| format!("<blob {}b>", v.len()))
-                })
-                .unwrap_or_else(|_| NULL_DISPLAY.to_string())
-        })
+        .map(|i| decode_any_cell(row, i).unwrap_or_else(|| NULL_DISPLAY.to_string()))
         .collect()
 }
 
@@ -1002,5 +1294,155 @@ mod tests {
 
         let syntax = classify_db_message("Query failed", "near \"FROM\": syntax error");
         assert!(syntax.contains("SQL syntax error"));
+    }
+
+    #[tokio::test]
+    async fn connect_auto_creates_missing_sqlite_file() {
+        let path =
+            std::env::temp_dir().join(format!("db-eye-autocreate-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        assert!(!path.exists());
+
+        let db = DbClient::connect(path.to_str().unwrap()).await.unwrap();
+        assert!(path.exists());
+        db.pool.close().await;
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn normalize_sqlite_url_handles_various_formats() {
+        assert_eq!(normalize_sqlite_url(":memory:"), ":memory:");
+        assert_eq!(normalize_sqlite_url("sqlite::memory:"), "sqlite::memory:");
+        assert_eq!(normalize_sqlite_url("test.db"), "sqlite:test.db?mode=rwc");
+        assert_eq!(
+            normalize_sqlite_url("sqlite:test.db"),
+            "sqlite:test.db?mode=rwc"
+        );
+        assert_eq!(
+            normalize_sqlite_url("sqlite:test.db?cache=shared"),
+            "sqlite:test.db?cache=shared&mode=rwc"
+        );
+        assert_eq!(
+            normalize_sqlite_url("sqlite:test.db?mode=ro"),
+            "sqlite:test.db?mode=ro"
+        );
+    }
+
+    #[test]
+    fn type_categorization_separates_integers_decimals_and_floats() {
+        assert!(is_integer_type("int"));
+        assert!(is_integer_type("INTEGER"));
+        assert!(is_integer_type("int(11)"));
+        assert!(is_integer_type("bigint"));
+        assert!(is_integer_type("serial"));
+        assert!(is_integer_type("year"));
+        // Custom types and enums must NOT be recognized as integers
+        assert!(!is_integer_type("point"));
+        assert!(!is_integer_type("international_code"));
+        assert!(!is_integer_type("interval"));
+
+        assert!(is_decimal_type("decimal"));
+        assert!(is_decimal_type("numeric"));
+        assert!(is_decimal_type("decimal(10,2)"));
+        assert!(is_decimal_type("numeric(8, 4)"));
+        assert!(!is_decimal_type("float"));
+        assert!(!is_decimal_type("int"));
+
+        assert!(is_float_type("real"));
+        assert!(is_float_type("float"));
+        assert!(is_float_type("double precision"));
+        // Decimal/numeric must NOT be recognized as floats
+        assert!(!is_float_type("decimal"));
+        assert!(!is_float_type("numeric"));
+    }
+
+    #[test]
+    fn decimal_input_validation_and_hints() {
+        let col = ColumnInfo {
+            name: "price".to_string(),
+            data_type: "decimal(10,2)".to_string(),
+            is_pk: false,
+            pk_order: 0,
+            fk_table: None,
+            fk_column: None,
+            is_nullable: false,
+            default_value: None,
+        };
+        assert_eq!(
+            col.input_hint(),
+            "decimal (e.g. 12.34) | empty/\\null = NULL"
+        );
+        assert!(col.validate_input("12.34").is_ok());
+        assert!(col.validate_input("-99.999").is_ok());
+        assert!(col.validate_input("100").is_ok());
+        assert!(
+            col.validate_input("12345678901234567890.1234567890")
+                .is_ok()
+        );
+        assert!(col.validate_input("not-a-number").is_err());
+        assert!(col.validate_input("12.34.56").is_err());
+    }
+
+    #[derive(Debug)]
+    struct MockDbError {
+        code: Option<&'static str>,
+        message: &'static str,
+    }
+    impl std::fmt::Display for MockDbError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.message)
+        }
+    }
+    impl std::error::Error for MockDbError {}
+    impl sqlx::error::DatabaseError for MockDbError {
+        fn message(&self) -> &str {
+            self.message
+        }
+        fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+            self
+        }
+        fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
+            self
+        }
+        fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+            self
+        }
+        fn kind(&self) -> ErrorKind {
+            ErrorKind::Other
+        }
+        fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
+            self.code.map(std::borrow::Cow::Borrowed)
+        }
+    }
+
+    #[test]
+    fn format_db_error_inspects_error_codes() {
+        let err = sqlx::Error::Database(Box::new(MockDbError {
+            code: Some("23505"),
+            message: "Key (id)=(1) already exists",
+        }));
+        let formatted = format_db_error("Insert", &err);
+        assert!(formatted.contains("duplicate value violates a unique constraint"));
+
+        let err_table = sqlx::Error::Database(Box::new(MockDbError {
+            code: Some("42P01"),
+            message: "relation \"users\" does not exist",
+        }));
+        let formatted_table = format_db_error("Query", &err_table);
+        assert!(formatted_table.contains("table or database object not found"));
+
+        let err_mysql = sqlx::Error::Database(Box::new(MockDbError {
+            code: Some("1062"),
+            message: "Duplicate entry '1' for key 'PRIMARY'",
+        }));
+        let formatted_mysql = format_db_error("Insert", &err_mysql);
+        assert!(formatted_mysql.contains("duplicate value violates a unique constraint"));
+
+        let err_sqlite_ro = sqlx::Error::Database(Box::new(MockDbError {
+            code: Some("8"),
+            message: "attempt to write a readonly database",
+        }));
+        let formatted_ro = format_db_error("Update", &err_sqlite_ro);
+        assert!(formatted_ro.contains("permission denied or database is read-only"));
     }
 }
