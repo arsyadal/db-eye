@@ -1,73 +1,99 @@
 Output docs/demo.gif
+Output docs/demo.mp4
 
 Set Shell "bash"
-Set FontSize 14
-Set Width 860
-Set Height 500
+Set FontSize 15
+Set Width 920
+Set Height 540
 Set Padding 20
-Set TypingSpeed 60ms
+Set TypingSpeed 55ms
+Set WindowBar "Colorful"
+Set BorderRadius 10
 
 Set Theme {
-  "background": "#0C0D0E",
-  "foreground": "#FFFFFF",
-  "black": "#0C0D0E",
-  "brightBlack": "#666666",
-  "green": "#00FF66",
-  "brightGreen": "#00FF66",
-  "yellow": "#FFBD2E",
-  "brightYellow": "#FFBD2E",
-  "red": "#FF5F56",
-  "brightRed": "#FF5F56",
-  "cursor": "#00FF66"
+  "background": "#0D1117",
+  "foreground": "#E6EDF3",
+  "black": "#0D1117",
+  "brightBlack": "#6E7681",
+  "red": "#FF7B72",
+  "brightRed": "#FFA198",
+  "green": "#3FB950",
+  "brightGreen": "#56D364",
+  "yellow": "#D29922",
+  "brightYellow": "#E3B341",
+  "blue": "#58A6FF",
+  "brightBlue": "#79C0FF",
+  "magenta": "#BC8CFF",
+  "brightMagenta": "#D2A8FF",
+  "cyan": "#39C5BB",
+  "brightCyan": "#56D4DD",
+  "white": "#E6EDF3",
+  "brightWhite": "#FFFFFF",
+  "cursor": "#E6EDF3"
 }
 
 Hide
-Type "clear && ./target/release/db-eye sample.db"
+Type "clear && ./target/release/db-eye demo.db"
 Enter
-Sleep 500ms
+Sleep 1s
 Show
 
-Sleep 1s
+Sleep 1.2s
 
-# Browse tables
+# 1. Browse tables with j/k
 Down 1
 Sleep 400ms
 Down 1
-Sleep 400ms
-Up 1
 Sleep 500ms
 
-# Open employees table
+# 2. Open products table
 Enter
 Sleep 1s
 
-# Scroll rows
-Down 3
+# 3. Scroll rows and sort by column
+Down 2
 Sleep 300ms
-Down 3
-Sleep 800ms
+Down 2
+Sleep 400ms
+Type "o"
+Sleep 700ms
+Type "o"
+Sleep 700ms
 
-# Search
+# 4. Search and filter rows
 Type "/"
-Sleep 300ms
-Type "budi"
-Sleep 1s
+Sleep 200ms
+Type "Hard"
+Sleep 800ms
 Escape
 Sleep 500ms
 
-# Run a custom SQL query
+# 5. Table stats popup
+Type "s"
+Sleep 1.2s
+Escape
+Sleep 400ms
+
+# 6. SQL Query Editor with Live Tab Autocomplete
 Type ":"
+Sleep 400ms
+Type "sel"
+Sleep 500ms
+Tab
+Sleep 400ms
+Type "* from p"
+Sleep 600ms
+Tab
+Sleep 500ms
+Type "whe"
+Sleep 400ms
+Tab
 Sleep 300ms
-Type "SELECT name, salary FROM employees ORDER BY salary DESC"
-Sleep 500ms
+Type "price > 100"
+Sleep 800ms
 Enter
-Sleep 1.5s
+Sleep 2s
 
-# Show help popup
-Type "?"
-Sleep 1.5s
-Type "?"
-Sleep 500ms
-
+# Clean exit
 Ctrl+C
 Sleep 500ms
