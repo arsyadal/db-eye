@@ -1,6 +1,8 @@
 # DB-Eye
 
-<img src="logo.svg" alt="DB-Eye Logo" width="360" />
+<img src="logo.svg" alt="DB-Eye Database Buddy logo: a database mascot with two green eyes" width="360" />
+
+**Bring your DB to terminal**
 
 **English** | [Bahasa Indonesia](README.id.md)
 

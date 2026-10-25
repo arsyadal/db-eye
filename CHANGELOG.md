@@ -27,6 +27,10 @@ Releases follow the **MAJOR.MINOR.PATCH** structure:
   - Internal refactoring and performance optimizations without changing public behavior.
 
 ## [Unreleased]
+
+### Changed
+
+- Adopt the Database Buddy mascot (database cylinder with two green cursor eyes) as the canonical logo in both README headers, retaining the slogan and preserving the previous logo and design alternatives locally in a Git-ignored folder.
 ## [0.4.1] - 2026-10-11
 
 ### Fixed
